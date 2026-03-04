@@ -1,0 +1,5 @@
+/var/spool/slurm/d/job1776190/slurm_script: line 8: cd: /home/jonschiff/PMF-MHD-Recomb/src/pmhd/physics: No such file or directory
+Traceback (most recent call last):
+  File "/home/jonschiff/PMF-MHD-recomb/src/pmhd/physics/TCR_Tfs.py", line 9, in <module>
+    from pmhd import cons, pars
+ModuleNotFoundError: No module named 'pmhd'

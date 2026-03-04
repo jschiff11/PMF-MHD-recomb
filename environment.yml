@@ -1,0 +1,13 @@
+name: pmhd
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - scipy
+  - matplotlib
+  - astropy
+  - pytest
+  - numdifftools 
+
+

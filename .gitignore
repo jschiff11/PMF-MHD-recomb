@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+
+# Conda
+.env/
+*.conda
+
+# Outputs
+data/outputs/
+
+# Logs
+logs/
+
+# VS Code
+*.code-workspace
+.vscode/
+
+# macOS
+.DS_Store
