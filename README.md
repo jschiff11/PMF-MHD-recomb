@@ -130,8 +130,7 @@ PMF-MHD-recomb/
 ├── data/
 │   └── outputs/                   # Stage outputs (gitignored)
 ├── analysis/
-│   ├── baseline_tests.ipynb       # Baseline validation notebook
-│   └── sample.ipynb               # Sample analysis
+│   └── baseline_tests.ipynb       # Baseline validation notebook
 ├── environment.yml
 └── pyproject.toml
 ```
