@@ -273,31 +273,30 @@ def sahapol(z):
 
 
 
+# --- module-level cached splines (built once at import time) ---
+_xe_zstart = 2300
+_xe_saha_arr = sahataylor(np.arange(3e4, _xe_zstart, -1))
+_xe_peebs = odeint(RHSsob, sahataylor(_xe_zstart), np.arange(_xe_zstart, 200, -1))
+_xe_hold = splrep(
+    np.flip(np.concatenate([np.linspace(1e11, 3.1e4, 10000), np.arange(3e4, 200, -1)])),
+    np.flip(np.concatenate([np.ones(10000), _xe_saha_arr, _xe_peebs[:, 0]]))
+)
+
+_xesaha2 = sahataylor(np.arange(3e5, 2660, -1))
+_xesaha3 = sahapol(np.arange(2660, 200, -1))
+_xesaha_hold = splrep(
+    np.flip(np.concatenate([np.linspace(1e11, 3.1e5, 10000), np.arange(3e5, 200, -1)])),
+    np.flip(np.concatenate([np.ones(10000), _xesaha2, _xesaha3]))
+)
+
 def xe_full(z):
-    
     r"""
-    Compute xe(z) assuming saha holds until redshift of 2300 and then use 3LA after. 
+    Compute xe(z) assuming saha holds until redshift of 2300 and then use 3LA after.
     """
-    zstart = 2300
-    xesaha = sahataylor(np.arange(3e4,zstart,-1) )
-
-    xepeebs = odeint(RHSsob, sahataylor(zstart) , np.arange(zstart,200,-1))
-
-    xe_hold = splrep(
-        np.flip(np.concatenate([np.linspace(1e11,3.1e4,10000) , np.arange(3e4,200,-1) ])),
-        np.flip(np.concatenate([np.ones(10000),xesaha,xepeebs[:,0]]))
-    )
-    
-    return splev(z, xe_hold)
+    return splev(z, _xe_hold)
 
 def xesaha_full(z):
-
-    xesaha2 = sahataylor(np.arange(3e5,2660,-1) )
-    xesaha3 = sahapol(np.arange(2660,200,-1))
-    
-    xesaha_hold = splrep( np.flip(np.arange(3e5,200,-1)),np.flip(np.append(xesaha2,xesaha3)) )
-    
-    return splev(z, xesaha_hold)
+    return splev(z, _xesaha_hold)
 
 
 ## Define useful functions for continuum contribution to the linearly perturbed ionization fraction
