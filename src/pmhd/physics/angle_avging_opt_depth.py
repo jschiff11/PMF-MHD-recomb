@@ -88,10 +88,10 @@ def main(input_bind, input_kind):
     d_taudotfin = np.zeros( ( len(zarr), len(thetaarr) ) )
 
     def deltafunc(z,thetaind):
-        hold = splrep(np.logspace(np.log10(1900),np.log10(600),10**4)[::-1],deltahold[thetaind,::-1])
+        hold = splrep(np.logspace(np.log10(zstartarr[input_kind]),np.log10(600),10**4)[::-1],deltahold[thetaind,::-1])
         return splev(z, hold)
     def dxefunc(z,thetaind):
-        hold = splrep(np.logspace(np.log10(1900),np.log10(600),10**4)[::-1],dxehold[thetaind,::-1])
+        hold = splrep(np.logspace(np.log10(zstartarr[input_kind]),np.log10(600),10**4)[::-1],dxehold[thetaind,::-1])
         return splev(z, hold)
     def dtauinteg(z,xe,thetaind):
         return cons.c*pars.nh(z)*cons.sigmat*(xe(z)*deltafunc(z,thetaind)+dxefunc(z,thetaind) )/pars.H(z)/(1+z)
@@ -102,7 +102,7 @@ def main(input_bind, input_kind):
     dtauhold = np.zeros((10**4,17))
     
     for thetaind in range(int((len(thetaarr)-1)/2)+1):
-        zinterp = np.logspace(np.log10(600),np.log10(1900), num = zsteps)
+        zinterp = np.logspace(np.log10(600),np.log10(zstartarr[input_kind]), num = zsteps)
         zmid = (zinterp[1:] + zinterp[:-1])/2
 
         dtauintegarr = dtauinteg(zinterp,xe_full,thetaind)
@@ -130,10 +130,10 @@ def main(input_bind, input_kind):
         deltahold = maghold[:,0,:]
 
         def deltafunc(z,thetaind):
-            hold = splrep(np.logspace(np.log10(1900),np.log10(600),10**4)[::-1],deltahold[thetaind,::-1])
+            hold = splrep(np.logspace(np.log10(zfsarr[input_kind]),np.log10(zcrossarr[input_kind]),10**4),deltahold[thetaind,::-1])
             return splev(z, hold)
         def dxefunc(z,thetaind):
-            hold = splrep(np.logspace(np.log10(1900),np.log10(600),10**4)[::-1],dxehold[thetaind,::-1])
+            hold = splrep(np.logspace(np.log10(zfsarr[input_kind]),np.log10(zcrossarr[input_kind]),10**4),dxehold[thetaind,::-1])
             return splev(z, hold)
         def dtauinteg(z,xe,thetaind):
             return cons.c*pars.nh(z)*cons.sigmat*(xe(z)*deltafunc(z,thetaind) )/pars.H(z)/(1+z)
@@ -160,9 +160,9 @@ def main(input_bind, input_kind):
             startzind = int(1900 - math.floor(zstartarr[input_kind]))
     
             
-            dtaufin[startzind:, thetaind] = splev(zarr[startzind:],
+            dtaufin[:startzind, thetaind] = splev(zarr[:startzind],
                                          splrep( zinterp, dtau[:,thetaind] ), der =0 )
-            d_taudotfin[startzind:, thetaind] = splev(zarr[startzind:],
+            d_taudotfin[:startzind, thetaind] = splev(zarr[:startzind],
                                          splrep( zinterp, d_taudot(zinterp,xe_full,thetaind) ), der =0 )
         
 

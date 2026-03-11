@@ -2,12 +2,11 @@ name: pmhd
 channels:
   - conda-forge
 dependencies:
-  - python=3.11
+  - python>=3.9
   - numpy
   - scipy
-  - matplotlib
+  - matplotlib>=3.7
   - astropy
   - pytest
-  - numdifftools 
-
-
+  - numdifftools
+  - pip

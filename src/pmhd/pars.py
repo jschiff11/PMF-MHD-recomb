@@ -12,7 +12,7 @@ from scipy.integrate import odeint
 from scipy.interpolate import interp1d
 
 from scipy.interpolate import splrep, splev, splint
-import numdifftools as nd
+from scipy.misc import derivative
 
 
 def Tcmb(z):
@@ -355,7 +355,7 @@ def Hprime(z):
     r"""
     Returns the derivative of the Hubble parameter wrt to redshift, dH/dz
     """
-    return nd.Derivative(H)(z)
+    return derivative(H, z, dx=1.0)
 
 def rhob(z):
     r"""
@@ -424,7 +424,7 @@ def FSRsahamag(z, vect, k, theta, Bin,xesaha_full):
     delta2Theta = 1
     
     Theta2delta = (k**2/ H(z)**2)*( 
-    (4.0*np.pi*cons.G*rhob0 * (1+z)/(k**2) ) - ((2.0 - fhe*xesaha_full(z))/(2.0 - xesaha_full(z)))*(1.0 - cons.yhe)*(
+    (4.0*np.pi*cons.G*rhob0 * (1+z)/(k**2) ) - ((2.0 + 2*fhe - fhe*xesaha_full(z))/(2.0 - xesaha_full(z)))*(1.0 - cons.yhe)*(
         cons.kb* Tcmb(z)/cons.mh) )
     Theta2Theta =  - ( Hprime(z)/ H(z) ) + (  H(z) +  f_lambda(z)*(1.0 - cons.yhe)*xesaha_full(z) ) / ( H(z)*(1+z) )
     Theta2b = - (cons.c**2 * k**2 * B0**2 * np.sin(theta) ) / (  H(z)**2 *  R(z)  )

@@ -12,7 +12,7 @@ en2 = en1/4 # 2p excitation energy
 
 # A few fundamental constants
 h = const.h.cgs.value       # Planck's constant
-hbar = h/2*np.pi            # Reduced Planck's constant
+hbar = h/(2*np.pi)          # Reduced Planck's constant
 kb = const.k_B.cgs.value    # Boltzmann's constant
 c = 29979245800             # Speed of light
 amu = 1.66053892e-24        # Atomic mass unit

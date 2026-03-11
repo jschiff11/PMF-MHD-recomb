@@ -79,7 +79,7 @@ def main(input_bind, input_kind):
     xebar = np.zeros( ( len(zarr), len(thetaarr) ) )
 
     for thetaind in range(int((len(thetaarr)-1)/2)+1):
-            zinterp = np.logspace(np.log10(1900),np.log10(600), num = zsteps)[::-1]
+            zinterp = np.logspace(np.log10(zstartarr[input_kind]),np.log10(600), num = zsteps)[::-1]
             startzind = int(1900 - math.floor(zstartarr[input_kind]))
             
             bx[startzind:, thetaind] = splev(zarr[startzind:],
