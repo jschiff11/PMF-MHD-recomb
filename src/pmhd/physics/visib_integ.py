@@ -77,9 +77,10 @@ def main(input_bind, input_epsind):
     dtaudtaudotcross = (abs(epsarr[input_epsind])/4 ) * (Lambda/(2*np.pi) )**((epsarr[input_epsind])) * np.load(cross_corrsave/f'dtaudtaudotcross_B_{round(1e12*B0arr[input_bind])}pG.npy')[:,input_epsind]
 
     dtau2 = np.zeros(len(zarr))
+    z_min = zarr[-1]
     for z in range(len(zarr)):
-        dtau2[z] = splint(600,zarr[z],splrep(zarr[::-1], 
-                                                (cons.c*pars.nh(zarr)*xe2*cons.sigmat/pars.H(zarr)/(1+zarr))[::-1] ) 
+        dtau2[z] = splint(z_min,zarr[z],splrep(zarr[::-1],
+                                                (cons.c*pars.nh(zarr)*xe2*cons.sigmat/pars.H(zarr)/(1+zarr))[::-1] )
                          )
     
     # Ensure directory exists
