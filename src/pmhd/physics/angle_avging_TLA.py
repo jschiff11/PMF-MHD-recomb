@@ -52,13 +52,13 @@ def main(input_bind, input_kind):
     # For this run, create subdir per B0
     Bdir = OUTBASE / f"Tfs/B_{round(1e12*B0arr[input_bind])}pG"
     
-    diffalf_Tf_b = np.load(Bdir / f"TCRalf_k{input_kind}.npy")[:,1,-1].reshape(17,1)
+    diffalf_Tf_b = np.load(Bdir / f"TCRalf_k{input_kind}.npy")[:,1,-1].reshape(-1,1)
 
     alfhold = np.load(Bdir / f"FSRTLAalf_k{input_kind}.npy")
     bxhold = diffalf_Tf_b*alfhold[:,1,:]
     Phixhold = diffalf_Tf_b*alfhold[:,0,:]
 
-    diffmag_Tf_b = np.load(Bdir / f"TCRmag_k{input_kind}.npy")[:,3,-1].reshape(17,1)
+    diffmag_Tf_b = np.load(Bdir / f"TCRmag_k{input_kind}.npy")[:,3,-1].reshape(-1,1)
     
     maghold = np.load(Bdir / f"FSRTLAmag_k{input_kind}.npy")
     byhold = diffmag_Tf_b*maghold[:,3,:]
