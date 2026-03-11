@@ -12,7 +12,6 @@ from scipy.integrate import odeint
 from scipy.interpolate import interp1d
 
 from scipy.interpolate import splrep, splev, splint
-from scipy.misc import derivative
 
 
 def Tcmb(z):
@@ -355,7 +354,8 @@ def Hprime(z):
     r"""
     Returns the derivative of the Hubble parameter wrt to redshift, dH/dz
     """
-    return derivative(H, z, dx=1.0)
+    orad = cosmo.Ogamma0 * (1 + cons.Neff * (7.0/8.0) * np.power(4.0/11.0, 4.0/3.0))
+    return cons.H0**2 * (3 * cons.omat * (1+z)**2 + 4 * orad * (1+z)**3) / (2 * H(z))
 
 def rhob(z):
     r"""

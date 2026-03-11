@@ -60,7 +60,7 @@ def generate_z_arrays(karr=None, lamarr=None):
     for kind in range(len(karr)):
         def fscross(z):
             if z >= 3e4:
-                hold = (1+z)// ( pars.nh(z) * cons.sigmat ) - lamarr[kind]
+                hold = (1+z)/( pars.nh(z) * cons.sigmat ) - lamarr[kind]
             else:
                 hold = pars.lgamma(z,pars.xe_full)*(1+z) - lamarr[kind]
             return hold
