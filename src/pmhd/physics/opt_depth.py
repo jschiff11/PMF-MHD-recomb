@@ -104,6 +104,7 @@ def main(input_bind):
 
     cross_corrsave = OUTBASE/"cross_corr"
     # Save results
+    cross_corrsave.mkdir(parents=True, exist_ok=True)
     np.save(cross_corrsave/f'dtaurms_B_{round(1e12*B0arr[input_bind])}pG.npy', dtaurms)
     np.save(cross_corrsave/f'dtaudtaudotcross_B_{round(1e12*B0arr[input_bind])}pG.npy', dtaudtaudotcross)
 
