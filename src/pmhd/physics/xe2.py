@@ -88,32 +88,29 @@ def main(input_bind, input_epsind):
     ## Define ODE function for x1s^{(2)} evolution
     def x1squad(z,x1s2,epsind,Lambda,abar2,sbar2,cbar2,cont):
 
-        ## Define continuous term 
-        conterm = cont
-
-        ## Define relevant interpolation functions
+        ## Define relevant interpolation functions (splines built once in enclosing scope)
 
         def f00xecrossinterp(z):
-            return splev(z,splrep(zarr[::-1],cross_corr['df00xecross'][::-1]))
-        
+            return splev(z, _tck_f00xecross)
+
         def feqxecrossinterp(z):
-            return splev(z,splrep(zarr[::-1],cross_corr['dfeqxecross'][::-1]))
-        
+            return splev(z, _tck_feqxecross)
+
         def dmxecrossinterp(z):
-            return splev(z,splrep(zarr[::-1],cross_corr['deltamxecross'][::-1]))
-        
+            return splev(z, _tck_dmxecross)
+
         def dxedxecrossinterp(z):
-            return splev(z,splrep(zarr[::-1],cross_corr['xerms'][::-1]))
+            return splev(z, _tck_dxedxecross)
 
         def conterminterp(z):
-            return splev(z,splrep(zarr[::-1],conterm[::-1]))
+            return splev(z, _tck_conterm)
 
         def abar2interp(z):
-            return splev(z, splrep(np.flip(zarr), np.flip(abar2) ) )
+            return splev(z, _tck_abar2)
         def sbar2interp(z):
-            return splev(z, splrep(np.flip(zarr), np.flip(sbar2) ) )
+            return splev(z, _tck_sbar2)
         def cbar2interp(z):
-            return splev(z, splrep(np.flip(zarr), np.flip(cbar2) ) )
+            return splev(z, _tck_cbar2)
         def pesc2(z):
             return (1-pars.pab(z)*cbar2interp(z)) / (1 + (1-pars.pab(z))*cbar2interp(z))
         
@@ -137,8 +134,19 @@ def main(input_bind, input_epsind):
         )
      
     ## Load in continuous term
-    cont = np.load(source_fncs/f'xe2contsource_B_{round(1e12*B0arr[input_bind])}pG_e{round(epsarr[input_epsind],3)}.npy')   
-    
+    cont = np.load(source_fncs/f'xe2contsource_B_{round(1e12*B0arr[input_bind])}pG_e{round(epsarr[input_epsind],3)}.npy')
+
+    ## Build splines once here (outside x1squad) so they are not rebuilt on every ODE evaluation
+    _zarr_flip = zarr[::-1]
+    _tck_f00xecross    = splrep(_zarr_flip, cross_corr['df00xecross'][::-1])
+    _tck_feqxecross    = splrep(_zarr_flip, cross_corr['dfeqxecross'][::-1])
+    _tck_dmxecross     = splrep(_zarr_flip, cross_corr['deltamxecross'][::-1])
+    _tck_dxedxecross   = splrep(_zarr_flip, cross_corr['xerms'][::-1])
+    _tck_conterm       = splrep(_zarr_flip, cont[::-1])
+    _tck_abar2         = splrep(np.flip(zarr), np.flip(abar2))
+    _tck_sbar2         = splrep(np.flip(zarr), np.flip(sbar2))
+    _tck_cbar2         = splrep(np.flip(zarr), np.flip(cbar2))
+
     ## Solve ODE for x1s^{(2)}
     hold = solve_ivp(x1squad, [1900,600], [1e-20], args = (input_epsind,Lambda,abar2,sbar2,cbar2,cont), method = 'LSODA', dense_output=True, atol=1e-9, rtol = 1e-6 )
     ## Create \Delta x_e from solution
