@@ -28,16 +28,43 @@ def main(input_bind, input_kind):
     def fssahaalfinteg(karr,thetaarr,B0arr,kind,bind,thetaind, zstart, vxinit, bxinit):
         sol = solve_ivp(pars.FSRsahaalf, [zstart, 600], [vxinit, bxinit], args=(
                     karr[kind], thetaarr[thetaind], B0arr[bind],xesaha_full), method = 'LSODA',
-                    dense_output=True, atol=1e-9, rtol = 1e-6 )    
-        
+                    dense_output=True, atol=1e-9, rtol = 1e-6 )
+
         return sol.sol(np.logspace(np.log10(zstart),np.log10(600),num = 10**4))
+
+    # If the Alfvén integration gets stuck (observed at kind=3, bind=56/57, thetaind=8),
+    # switch to log(z) integration below. The variable change d/d(log z) = z * d/dz is
+    # mathematically equivalent but avoids a pathological LSODA step-size failure at theta=pi/4.
+    # def fssahaalfinteg(karr,thetaarr,B0arr,kind,bind,thetaind, zstart, vxinit, bxinit):
+    #     def rhs_logz(lz, v):
+    #         z = np.exp(lz)
+    #         dv = pars.FSRsahaalf(z, v, karr[kind], thetaarr[thetaind], B0arr[bind], xesaha_full)
+    #         return [dv[0]*z, dv[1]*z]
+    #     lzstart = np.log(zstart)
+    #     lzgrid  = np.linspace(lzstart, np.log(600), num=10**4)
+    #     sol = solve_ivp(rhs_logz, [lzstart, np.log(600)], [vxinit, bxinit],
+    #                     method='LSODA', dense_output=True, atol=1e-9, rtol=1e-6)
+    #     return sol.sol(lzgrid)
 
     def fssahainteg(karr,thetaarr,B0arr,kind,bind,thetaind, zstart, deltainit, vzinit, vyprimeinit, byinit):
         sol = solve_ivp(pars.FSRsahamag, [zstart, 600], [deltainit, vzinit, vyprimeinit, byinit], args=(
                     karr[kind], thetaarr[thetaind], B0arr[bind],xesaha_full), method = 'LSODA',
-                    dense_output=True, atol=1e-9, rtol = 1e-6 )    
-        
+                    dense_output=True, atol=1e-9, rtol = 1e-6 )
+
         return sol.sol(np.logspace(np.log10(zstart),np.log10(600),num = 10**4))
+
+    # If the magnetosonic integration gets stuck, the same log(z) fix can be applied:
+    # def fssahainteg(karr,thetaarr,B0arr,kind,bind,thetaind, zstart, deltainit, vzinit, vyprimeinit, byinit):
+    #     def rhs_logz(lz, v):
+    #         z = np.exp(lz)
+    #         dv = pars.FSRsahamag(z, v, karr[kind], thetaarr[thetaind], B0arr[bind], xesaha_full)
+    #         return [x*z for x in dv]
+    #     lzstart = np.log(zstart)
+    #     lzgrid  = np.linspace(lzstart, np.log(600), num=10**4)
+    #     sol = solve_ivp(rhs_logz, [lzstart, np.log(600)],
+    #                     [deltainit, vzinit, vyprimeinit, byinit],
+    #                     method='LSODA', dense_output=True, atol=1e-9, rtol=1e-6)
+    #     return sol.sol(lzgrid)
     
     print(time.ctime())
 
