@@ -92,9 +92,16 @@ def peebC_Tb(z,xe,Tb):
     return (3 * Rlya(z,xe) + cons.L2s1s ) / ( 3 * Rlya(z,xe) + cons.L2s1s + 4  * betab_Tb(z,Tb))
 
 def RHSsob_Tb(xe,z,Tb):
-    hold = ( peebC_Tb(z,xe,Tb) / ( (1+z) * H(z) ) ) * ( 
+    hold = ( peebC_Tb(z,xe,Tb) / ( (1+z) * H(z) ) ) * (
         nh(z) * xe**2  * alphab_Tb(z,Tb) - 4*(1-xe) *  betab(z) * np.exp(-(cons.en2 - cons.en1) / ( cons.kb * Tcmb(z) ) ) )
     return hold
+
+def RHSTbhom(Tm,z,xe):
+    fhe = cons.yhe/(4.0*(1.0 - cons.yhe))
+    gammaT = 8*cons.arad*xe(z)*Tcmb(z)**4*cons.sigmat/(3*cons.me * (1+xe(z)+fhe) )/cons.c
+    return (
+    2*Tm/(1+z) - gammaT/H(z) * (Tcmb(z) - Tm)/(1+z)
+    )
 
 def pab(z):
     r"""
@@ -542,8 +549,6 @@ def FSRTLAalf(z, vect, k, theta, Bin, xe_full):
                                                ), 
             bx2Phix * Phix ]
 
-
-    
 def FSRTLAmag_Tb(z, vect, k, kind, theta, Bin, xe_full, abarinterp, bbarinterp, cbarinterp, Tbhom, Acon, B1con, B2con):
     
     r"""
@@ -557,8 +562,6 @@ def FSRTLAmag_Tb(z, vect, k, kind, theta, Bin, xe_full, abarinterp, bbarinterp, 
 
     xh = 1 - cons.yhe
     fhe = cons.yhe/(4.0*(1.0 - cons.yhe))
-    # def alphab_Tb(z,Tb):
-    # return (1e-13)*((4.309*(Tb(z)/10**4)**-0.6166)/(1 + 0.6703*(Tb(z)/10**4)**0.53))
     
     def kappa(k,z):
         return 1 - Acon(z)/(k*(1+z)) * np.arctan((k*(1+z))/Acon(z))
@@ -578,12 +581,13 @@ def FSRTLAmag_Tb(z, vect, k, kind, theta, Bin, xe_full, abarinterp, bbarinterp, 
     def sigB(kind,z):
         return 3*(1-P3LA(kind,z))*cons.Alya * ( bbarinterp(z,kind) )/ (
             1 + (1 -  pab(z)) * cbarinterp(z,kind) )
-     
+
     def dalphabpref(z):
-        return -(0.6166 + 0.3553*(Tcmb(z)/10**4)**0.53/(1 + 0.6703*(Tcmb(z)/10**4)**0.53) )
+        a=4.309; b=-0.6166; c=0.6703; d=0.53
+        return (b + (b-d)*c*(Tbhom(z)/10**4)**d/(1 + c*(Tbhom(z)/10**4)**d) )
+
     def Gammac(z):
         return 8*cons.arad*Tcmb(z)**4*xe_full(z)*cons.sigmat/( 3*cons.me*(1+xe_full(z) + fhe) )/cons.c
-        # 8*cons.arad*xe(z)*parsf.Tcmb(z)**4*cons.sigmat/(3*cons.me * (1+xe(z)+fhe) )/cons.c
     def dGammacpref(z):
         return (1 + fhe)/(xe_full(z) * (1 + xe_full(z) + fhe ) )
     
@@ -612,7 +616,7 @@ def FSRTLAmag_Tb(z, vect, k, kind, theta, Bin, xe_full, abarinterp, bbarinterp, 
                4* feq(z,xe_full)* betab(z)
                + sigA(kind,z)
               )/( H(z)*(1+z))
-    dxe2Tb = (-2*P3LA(kind,z)* nh(z)*xe_full(z)**2*alphab(z)/( H(z)*(1+z)) ) * dalphabpref(z)
+    dxe2Tb = (P3LA(kind,z)* nh(z)*xe_full(z)**2*alphab(z)/( H(z)*(1+z)) ) * dalphabpref(z)
 
     Tb2Tb =  Gammac(z)*(Tcmb(z)/Tbhom(z))/(H(z)*(1+z))
     Tb2Theta = (2/3)
