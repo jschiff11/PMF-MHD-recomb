@@ -58,11 +58,11 @@ def main(input_bind, input_epsind):
     cross_corrsave = OUTBASE/"cross_corr"
     source_fncs = OUTBASE/"source_fncs"
 
-     # Load source functions for given B_0 and eps
-    sbar2 = np.load(source_fncs/f'ftot_B_{round(1e12*B0arr[input_bind])}pG_e{round(epsarr[input_epsind],3)}.npy')
-    
-    # Load in cross correlations for given B_0 and eps
-    with open(cross_corrsave/f'cross_corr_B_{round(1e12*B0arr[input_bind])}pG_e{round(epsarr[input_epsind],3)}.pkl', 'rb') as f:
+     # Load Tb source functions for given B_0 and eps
+    sbar2 = np.load(source_fncs/f'ftot_Tb_B_{round(1e12*B0arr[input_bind])}pG_e{round(epsarr[input_epsind],3)}.npy')
+
+    # Load Tb cross correlations (all keys recomputed from Tb ang_avg)
+    with open(cross_corrsave/f'cross_corr_Tb_B_{round(1e12*B0arr[input_bind])}pG_e{round(epsarr[input_epsind],3)}.pkl', 'rb') as f:
         cross_corr = pickle.load(f)
 
     sol = odeint(pars.RHSTbhom, pars.Tcmb(1900), np.arange(1900,600,-0.01), args=(xe_full, ))
