@@ -166,22 +166,24 @@ def fullk(zval,karr,xe_total,nm,steps,psd_h):
     # source from 2p population and monopole, note sign change
     b_i[nm:-nm:nm,2] += -tauS*voigt_output_xs[1:-1]*source[2]*dx
     
+    coeffs_base = coeffs_i.copy()
     moments = np.zeros( ( len(karr), nm*len(output_xs), 3 ) )
     fbar = np.zeros( (len(karr),3))
     for kind in range(len(karr)):
+        coeffs_i = coeffs_base.copy()
         # list of parameters governing strength of advection, c*k*Delta/H*a
-        tvsh = ( 
+        tvsh = (
                 ( cons.c*delta*(1.0 + zval) / ( pars.H(zval) ) )
                 * karr[kind] ) # z by k
         # advection term for j=1 to nm-2
         for j in range(1,nm-1):
-            coeffs_i[nm-1,j+1:-nm+1:nm] = (-dx*tvsh*(j+1.0)/(2.0*j+3.0))
-            coeffs_i[nm+1,j-1:-nm-1:nm] = (dx*tvsh*j/(2.0*j-1.0))
+            coeffs_i[nm-1,j+1:-nm+1:nm] += (-dx*tvsh*(j+1.0)/(2.0*j+3.0))
+            coeffs_i[nm+1,j-1:-nm-1:nm] += (dx*tvsh*j/(2.0*j-1.0))
         # advection term for j=0
-        coeffs_i[nm-1,1+nm:-nm+1:nm] = (-(dx/3.0)*tvsh)
+        coeffs_i[nm-1,1+nm:-nm+1:nm] += (-(dx/3.0)*tvsh)
         # advection term for j=nm-1, with non reflecting B.C
         coeffs_i[nm,nm-1:-nm:nm] += (-dx*tvsh*(nm-1.0)/np.sqrt(4.0*(nm-1.0)**2-1.0))
-        coeffs_i[nm+1,nm-2:-nm:nm] = (dx*tvsh*(nm-1.0)/(2.0*nm-3.0))
+        coeffs_i[nm+1,nm-2:-nm:nm] += (dx*tvsh*(nm-1.0)/(2.0*nm-3.0))
 
         # moments = np.array( 
         #             [sb( (nm,nm), coeffs_i, b_i )  ] 
