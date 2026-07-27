@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Conda
+.env/
+*.conda
+
+# Outputs
+data/outputs/
+
+# 20 keV test scripts (ad hoc diagnostic, not part of the package)
+*_z20.py
+
+# Logs
+logs/
+*.log
+
+# VS Code
+*.code-workspace
+.vscode/
+
+# macOS
+.DS_Store
+
+# Claude Code
+CLAUDE.md
+analysis/plots/
+
+# Paper pipeline data (large, regenerable; only the plots/ folder is tracked)
+paper_data_plots/data/
+
+# Cached expensive intermediate results (regenerable from paper_data_plots/data/)
+analysis/.fig20_raw_ext_cache/
+analysis/.fig07_local3la_cache/

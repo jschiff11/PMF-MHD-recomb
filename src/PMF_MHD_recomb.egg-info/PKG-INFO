@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: PMF-MHD-recomb
+Version: 0.1.0
+Summary: Evolution of primordial magnetic fields and fluid variables
+Author: Jonathan Schiff
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: astropy
+Requires-Dist: matplotlib
