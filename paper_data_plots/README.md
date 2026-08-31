@@ -10,6 +10,45 @@ Layout:
 - `data/` — pipeline intermediate outputs (`.npy`/`.pkl`, ~150 GB), gitignored.
   This replaced an external, out-of-repo data directory; the whole pipeline
   is now self-contained under this one repo.
+- `theta_converged/` — theta-refined angular averages used to correct
+  `05_magnetic_power_spectrum.png` (see below), tracked in git (~370 KB).
+
+## Theta-grid convergence in `05_magnetic_power_spectrum.png`
+
+The pipeline angle-averages on a uniform 33-node grid over `[0, pi]`
+(`theta_gridfull()`), i.e. 32 intervals with `d_theta = pi/32 = 5.625 deg`, and
+the perpendicular direction `theta = pi/2` falls on an interior node.
+
+At `theta = pi/2` the Alfven restoring force (proportional to `cos^2 theta`)
+vanishes, so that mode stays undamped while all oblique angles have damped
+away. The surviving wedge has angular width `~1/(k v_A)`, which at high `k` is
+far narrower than `d_theta`. The quadrature — an interpolating cubic spline
+(`splrep`/`splint`) — then assigns the spike the width of a grid interval
+instead of its true width, so `bxbxbar` saturates at exactly
+`d_theta = 9.81748e-2`. In `Delta_B^2(k)` this appeared as a flat high-`k`
+plateau on which all redshifts collapsed onto a single line.
+
+This was checked by re-solving the transfer functions on a refined grid that
+keeps the 17 production nodes and adds 14 geometric bisections toward `pi/2`,
+reaching `6e-6 rad`. Restricted to the production nodes it reproduces the
+shipped arrays bitwise; on the full grid the plateau disappears, the spectrum
+continues to decline, and the redshift ordering is preserved. The previously
+plotted values were too high by ~2.5x (z=1900) to ~10.7x (z=1000), and up to
+~20x for individual modes.
+
+`plot_power_spectra_and_clumping.py` now overrides `bxbxbar`/`bybybar` for
+kinds 0-18 at `B0 = 315 pG` (the only field strength this figure plots) with
+`theta_converged/ang_avg_TLA_B315pG_converged.npz`. Kinds 19-68 are unaffected
+— kind 18 agrees to 0.1-0.7% at every plotted redshift — and are used as
+shipped. No truncation in `k` is applied.
+
+Scope: the artifact is confined to the **Alfven** branch. Magnetosonic-sourced
+quantities (`deltamdeltambar`, `xexebar` and their cross-correlations) converge
+by `k ~ 2e4 Mpc^-1`, because the magnetosonic driving term (proportional to
+`sin theta cos theta`) also vanishes at perpendicular and so produces no sharp
+endpoint feature. Propagating the correction changes the clumping factor by
+-0.41% to -0.69% (both recombination models, z = 1000-1295) and leaves
+`06_clumping_power_spectrum.png` byte-identical.
 
 ## Figure index
 
