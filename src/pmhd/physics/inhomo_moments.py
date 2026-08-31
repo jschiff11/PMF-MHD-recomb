@@ -603,7 +603,10 @@ def fullzp1(z_arr,zin,zfin,k,xe_total,nm,steps,psd):
     
     xe_total : the free ionizaiton fraction. It is an array that must be defined over all redshifts in z_arr.  
     
-    nm-1 : the moment at which you truncate the hierarchy. Non-reflecting boundary conditions are used. 
+    nm-1 : the moment at which you truncate the hierarchy. The m = +/-1
+    hierarchies are closed by simple truncation (cutoff B.C. on the
+    advection term at j = nm-1), NOT by the non-reflecting condition used
+    in the m = 0 solver fullz(). 
 
     steps : defines the size of the doppler width array. \delta x (the doppler width in between each bin) is given by 2000/(steps-1)
     
@@ -713,7 +716,10 @@ def fullzm1(z_arr,zin,zfin,k,xe_total,nm,steps,psd):
     
     xe_total : the free ionizaiton fraction. It is an array that must be defined over all redshifts in z_arr.  
     
-    nm-1 : the moment at which you truncate the hierarchy. Non-reflecting boundary conditions are used. 
+    nm-1 : the moment at which you truncate the hierarchy. The m = +/-1
+    hierarchies are closed by simple truncation (cutoff B.C. on the
+    advection term at j = nm-1), NOT by the non-reflecting condition used
+    in the m = 0 solver fullz(). 
 
     steps : defines the size of the doppler width array. \delta x (the doppler width in between each bin) is given by 2000/(steps-1)
     

@@ -60,6 +60,25 @@ endpoint feature. Propagating the correction changes the clumping factor by
 | `12_lmhd_coupling_kernel.png`–`17_pctdiff_xe2_Tb.png`, `20_photon_bath_ydistortion.png` | `plot_baryon_heating.py` | Baryon-heating (T_b) coupling kernel and percent-difference diagnostics; Compton-y check if drag-dissipated KE heated the photon bath instead of being neglected |
 | `18_lyman_alpha_moments.png`, `19_hyrec_saha_3la_psd_lineshape.png` | `plot_moments_and_lineshape.py` | Lyman-alpha moments and HyRec/Saha/3LA lineshape comparison (helium-independent) |
 
+## Reproducing `18_lyman_alpha_moments.png` (Figure 8)
+
+`plot_moments_and_lineshape.py` is self-contained (no pipeline data), but
+several of its inputs appear only as array indices. Resolved values:
+
+| Parameter | Value |
+|---|---|
+| Wavenumber | `karr[3]` = 3.149052e-20 m^-1 = **97169.60 Mpc^-1** |
+| Redshift | `zind = 800` of `z_grid(1900,600,-1)` -> **z = 1100** (solver spans 800->802, i.e. z = 1100-1099; plotted row is z = 1100) |
+| Multipole cutoff | `nm = 30`, hierarchy truncated at **l = 29** |
+| Frequency grid | x in [-1000, +1000] Doppler widths, `steps = 100001`, **dx = 0.02**; plotted over x in [-200, 200] |
+| Boundary conditions | **simple truncation** (cutoff B.C. at j = nm-1). The m = +/-1 hierarchies do *not* use the non-reflecting condition of the m = 0 solver `fullz()` |
+| Cosmology | astropy **Planck18**: H0 = 2.192711e-18 s^-1, Omega_m = 0.309660, Omega_Lambda = 0.688846, N_eff = 3.046, T0 = 2.7255 K, Y_p = 0.2454, Omega_b h^2 = 0.022418 |
+| Plotted curves | l=1 is `p1moms[0, 1::30, 0]`, l=2 is `p1moms[0, 2::30, 0]`; the `::30` stride is the `nm` interleaving and the trailing `0` selects the **first of three basis solutions** |
+
+The basis-solution index and the multipole normalization convention are the two
+places an independent implementation is most likely to pick up an overall
+amplitude offset while reproducing the curve shape correctly.
+
 ## What would need to be run to regenerate these
 
 The plotting scripts live in this repo under `analysis/`, and everything they

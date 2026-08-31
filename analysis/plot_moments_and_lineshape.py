@@ -13,6 +13,35 @@ is computed on the fly with hompsd.psdHR (as in the src/pmhd/physics
 pipeline), and the HyRec comparison table is read from the repo's
 pre-stored data.
 
+FIGURE 18 PARAMETERS (for anyone reproducing it)
+------------------------------------------------
+Several inputs appear below only as array indices; the resolved values are:
+
+  wavenumber        karr[3] = 3.149052e-20 m^-1 = 97169.60 Mpc^-1
+                    (k_grid() = 2*pi/logspace(20, 26.9, 69), SI units)
+  redshift          zind 800 of z_grid(1900, 600, -1)  ->  z = 1100
+                    (the solver spans zind 800->802, i.e. z = 1100-1099; the
+                    plotted row is moments[0, ...] = z = 1100)
+  multipole cutoff  nm = 30, hierarchy truncated at l = nm - 1 = 29
+  frequency grid    x = (nu - nu_Lya)/(nu_Lya * Delta_H) in [-1000, +1000]
+                    Doppler widths, steps = 100001, dx = 0.02;
+                    plotted over x in [-200, 200]
+  boundary cond.    simple truncation (cutoff B.C. on the advection term at
+                    j = nm-1). The m = +/-1 hierarchies do NOT use the
+                    non-reflecting condition of the m = 0 solver fullz().
+  cosmology         astropy Planck18, via pmhd.cons / pars.H(z):
+                    H0 = 2.192711e-18 s^-1, Omega_m = 0.309660,
+                    Omega_Lambda = 0.688846, N_eff = 3.046, T0 = 2.7255 K,
+                    Y_p = 0.2454, Omega_b h^2 = 0.022418
+  plotted curves    l=1 is p1moms[0, 1::30, 0], l=2 is p1moms[0, 2::30, 0].
+                    The ::30 stride is the nm interleaving of the moment
+                    hierarchy; the trailing index 0 selects the FIRST of the
+                    three basis solutions returned by fullzp1/fullzm1.
+
+The basis-solution index and the multipole normalization convention are the
+two places where an independent implementation is most likely to pick up an
+overall amplitude offset while reproducing the curve shape correctly.
+
 Configuration (environment variables):
   PMHD_PLOTDIR : directory to write figures to (default: <repo>/analysis/plots)
 
