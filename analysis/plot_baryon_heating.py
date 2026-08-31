@@ -205,7 +205,7 @@ for bcount, bind in enumerate(bindarr2):
     for zi in range(len(zindarr)):
         zind = zindarr[zi]
         ax.loglog(karrfine * cons.mpc,
-                 -epsarr[epsind] * (Lambda / 2 * np.pi)**epsarr[epsind] * (karrfine * cons.mpc)**epsarr[epsind] *
+                 (abs(epsarr[epsind]) / 4) * (Lambda * karrfine / (2 * np.pi))**epsarr[epsind] *
                  abs(splev(karrfine * cons.mpc, splrep(karr[::-1] * cons.mpc, TbTbbar[::-1, zind, bind]))),
                  label=f'$z={zarr[zind]-1:.0f}$', color=colors2[zi])
     ax.set_xlabel(r'$k \; (Mpc^{-1})$', fontsize=16)

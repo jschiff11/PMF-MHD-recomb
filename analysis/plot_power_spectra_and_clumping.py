@@ -114,7 +114,8 @@ colors = [plt.cm.Reds(i) for i in np.linspace(0.2, 1, numberofplotspec)]
 numberofplotspec2 = 8
 colors2 = [plt.cm.magma(i) for i in np.linspace(0.2, 1, numberofplotspec2)]
 bindarr2 = [0, 30, 60]
-lamarrfine = 10**np.arange(20, np.log10(2 * np.pi / (0.3 / cons.mpc)), .01)
+kmin_kind = np.argmin(np.abs(karr * cons.mpc - 1.0))  # kind whose k is closest to 1 Mpc^-1
+lamarrfine = 10**np.arange(20, np.log10(2 * np.pi / karr[kmin_kind]), .01)
 karrfine = 2 * np.pi / lamarrfine
 Lambda = 1e3 * cons.mpc
 
@@ -130,16 +131,15 @@ for bcount, bind in enumerate(bindarr2):
     for zi in range(len(zindarr)):
         zind = zindarr[zi]
         ax.semilogx(karrfine * cons.mpc,
-                   -epsarr[9] * (Lambda / 2 * np.pi)**epsarr[9] * (karrfine * cons.mpc)**epsarr[9] *
+                   (abs(epsarr[9]) / 4) * (Lambda * karrfine / (2 * np.pi))**epsarr[9] *
                    abs(splev(karrfine * cons.mpc, splrep(karr[::-1] * cons.mpc, deltamdeltambar[::-1, zind, bind]))),
                    label=f'$z={zarr[zind]:.0f}$', color=colors2[zi])
         ax.semilogx(karrfine * cons.mpc,
-                   -epsarr[9] * (Lambda / 2 * np.pi)**epsarr[9] * (karrfine * cons.mpc)**epsarr[9] *
+                   (abs(epsarr[9]) / 4) * (Lambda * karrfine / (2 * np.pi))**epsarr[9] *
                    abs(splev(karrfine * cons.mpc, splrep(karr[::-1] * cons.mpc, deltamdeltambar_saha[::-1, zind, bind]))),
                    ':', color=colors2[zi])
     ax.set_xlabel(r'$k \; (Mpc^{-1})$', fontsize=16)
     ax.set_title(f'$B_0 = $ {pg(bind)}pG', fontsize=20)
-    ax.set_xlim(left=0.3)
     if bcount % 3 == 0:
         ax.set_ylabel(r'$\Delta^2_{\delta_b}(k)$', fontsize=16)
     if bcount == 0:

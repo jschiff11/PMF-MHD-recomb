@@ -70,7 +70,7 @@ for bind in bindarr:
 
 
 def delta2(dd, zind, bind):
-    return (-eps * (Lambda / 2 * np.pi) ** eps * (karrfine * cons.mpc) ** eps
+    return ((abs(eps) / 4) * (Lambda * karrfine / (2 * np.pi)) ** eps
              * abs(splev(karrfine * cons.mpc, splrep(karr[::-1] * cons.mpc, dd[::-1, zind, bind]))))
 
 
