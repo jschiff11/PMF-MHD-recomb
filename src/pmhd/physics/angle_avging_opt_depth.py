@@ -105,7 +105,12 @@ def main(input_bind, input_kind):
         
     
     if zstartarr[input_kind]!=1900:
-    
+
+        # delta-tau accumulated across the FSR range [600, z_fs]. The TCR-era integral
+        # continues from this value so dtaufin(z) is always the full integral from the
+        # observer side up to z, not just the TCR-range piece.
+        dtau_fsr_total = dtau[-1,:].copy()
+
         maghold = np.load(Bdir / f"TCRmag_k{input_kind}.npy")
         byhold = maghold[:,3,:]
         Phiyhold = maghold[:,2,:]
@@ -114,9 +119,6 @@ def main(input_bind, input_kind):
 
         def deltafunc(z,thetaind):
             hold = splrep(np.logspace(np.log10(zfsarr[input_kind]),np.log10(zcrossarr[input_kind]),10**4),deltahold[thetaind,::-1])
-            return splev(z, hold)
-        def dxefunc(z,thetaind):
-            hold = splrep(np.logspace(np.log10(zfsarr[input_kind]),np.log10(zcrossarr[input_kind]),10**4),dxehold[thetaind,::-1])
             return splev(z, hold)
         def dtauinteg(z,xe,thetaind):
             return cons.c*pars.nh(z)*cons.sigmat*(xe(z)*deltafunc(z,thetaind) )/pars.H(z)/(1+z)
@@ -137,12 +139,12 @@ def main(input_bind, input_kind):
             dtauintegarrmid = dtauinteg(zmid,xe_full_He,thetaind)
             
             dtauhold[1:,thetaind] = ((zinterp[1:] - zinterp[:-1])/6)*(dtauintegarr[:-1] + 4*dtauintegarrmid[:] + dtauintegarr[1:])
-            dtau[:,thetaind] = np.cumsum(dtauhold[:,thetaind])
-            
-            
+            dtau[:,thetaind] = np.cumsum(dtauhold[:,thetaind]) + dtau_fsr_total[thetaind]
+
+
             startzind = int(1900 - math.floor(zstartarr[input_kind]))
-    
-            
+
+
             dtaufin[:startzind, thetaind] = splev(zarr[:startzind],
                                          splrep( zinterp, dtau[:,thetaind] ), der =0 )
             d_taudotfin[:startzind, thetaind] = splev(zarr[:startzind],
