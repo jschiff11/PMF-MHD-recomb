@@ -1,0 +1,8 @@
+{
+ "codata_set": "codata2018",
+ "background_cache": "xe_peebs_tight.npy",
+ "background_sha256": "8152ddb2067d22c08ac191389cb59aa5b79a160945326d3946b9fc84161a0176",
+ "builder": "physics/firstOmoments_and_secondO_soln_PRD_fullk.py --nm 15 --nmpm1 15 --xsteps 100001 (non-reflecting closure, first-order Doppler source), homogeneous line with the blue boundary at the line-centre blackbody (PMHD_HOMPSD_BB_CENTER=1)",
+ "redshifts": "z = 1900 ... 601 (1300 values); chunks 0-34 built 2026-10-13, chunks 35-129 built 2026-10-14, all on the background above",
+ "record": "paper_data_plots/manuscript_sync/PREREG.md, addenda 12, 15, 17"
+}

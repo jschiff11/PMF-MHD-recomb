@@ -35,7 +35,10 @@ Z_NUDEC = 1.0e6 / (8.617333262e-5 * cons.T0) - 1.0
 # -----------------------------
 data_dir = os.path.join(os.path.dirname(__file__), 'pre_stored_data')
 zc_path = os.path.join(data_dir, 'zcrossarr.npy')
-zf_path = os.path.join(data_dir, 'zfsarr.npy')
+# Free-streaming transition lambda = l_MFP = (a n_e sigma_T)^-1 with n_e including the helium electrons (x_e = 1 + 2 f_He when
+# He is fully ionised; manuscript Sec. II A 2 / Table I). PMHD_ZFS_HE=0 reproduces the pre-2026-10-12 hydrogen-only cache.
+ZFS_HE = os.environ.get("PMHD_ZFS_HE", "1") != "0"
+zf_path = os.path.join(data_dir, 'zfsarr_He.npy' if ZFS_HE else 'zfsarr.npy')
 B0_path = os.path.join(data_dir, 'B0arr.npy')
 
 
@@ -67,7 +70,11 @@ def generate_z_arrays(karr=None, lamarr=None):
     zfsarr = np.zeros(len(karr))
     for kind in range(len(karr)):
         def fscross(z):
-            if z >= 3e4:
+            if ZFS_HE:   # n_e = n_H x_e with the helium electrons (plateau 1 + 2 f_He above z = 3e4)
+                fhe = cons.yhe/(4.0*(1.0 - cons.yhe))
+                xe = (1.0 + 2.0*fhe) if z >= 3e4 else pars.xe_full_He(z)
+                hold = (1+z)/( pars.nh(z) * xe * cons.sigmat ) - lamarr[kind]
+            elif z >= 3e4:
                 hold = (1+z)/( pars.nh(z) * cons.sigmat ) - lamarr[kind]
             else:
                 hold = pars.lgamma(z,pars.xe_full)*(1+z) - lamarr[kind]

@@ -55,9 +55,11 @@ def main(input_bind, input_epsind):
     xe2_Tb = np.load(xe2direc/f'xe2_Tb_B_{round(1e12*B0arr[input_bind])}pG_e{round(epsarr[input_epsind],3)}.npy')
 
     cross_corrsave = OUTBASE/"cross_corr"
-    dtaurms = (abs(epsarr[input_epsind])/4 ) * (Lambda/(2*np.pi) )**((epsarr[input_epsind])) * np.load(cross_corrsave/f'dtaurms_B_{round(1e12*B0arr[input_bind])}pG.npy')[:,input_epsind]
+    # T_b-coupled photon-path terms (opt_depth.py --tb); PMHD_TB_INPUTS=0 reproduces the pre-2026-10-12 use of the non-T_b ones
+    _sfx = '_Tb' if os.environ.get('PMHD_TB_INPUTS', '1') != '0' else ''
+    dtaurms = (abs(epsarr[input_epsind])/4 ) * (Lambda/(2*np.pi) )**((epsarr[input_epsind])) * np.load(cross_corrsave/f'dtaurms{_sfx}_B_{round(1e12*B0arr[input_bind])}pG.npy')[:,input_epsind]
 
-    dtaudtaudotcross = (abs(epsarr[input_epsind])/4 ) * (Lambda/(2*np.pi) )**((epsarr[input_epsind])) * np.load(cross_corrsave/f'dtaudtaudotcross_B_{round(1e12*B0arr[input_bind])}pG.npy')[:,input_epsind]
+    dtaudtaudotcross = (abs(epsarr[input_epsind])/4 ) * (Lambda/(2*np.pi) )**((epsarr[input_epsind])) * np.load(cross_corrsave/f'dtaudtaudotcross{_sfx}_B_{round(1e12*B0arr[input_bind])}pG.npy')[:,input_epsind]
 
     dtau2 = np.zeros(len(zarr))
     z_min = zarr[-1]

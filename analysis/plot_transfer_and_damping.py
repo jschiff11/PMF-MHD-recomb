@@ -182,14 +182,14 @@ def hull(zlist):
 # that dip below e^-1 during recombination but gravitationally regrow after
 # decoupling would be miscounted as damped. Cached next to the FM data;
 # delete the cache file to force recomputation.
-_fm_fsr_cache = DATA / f"Tfs/FM/B_{pg(0)}pG/FSRdelta_fullstate.npy"
+_fm_fsr_cache = DATA / f"Tfs/FM/B_{pg(0)}pG/FSRdelta_fullstate_db3.npy"   # TCR delta_gamma -> FSR delta_b = 3 delta_gamma at the handoff (2026-10-12)
 if _fm_fsr_cache.exists():
     FMfsr = np.load(_fm_fsr_cache)
 else:
     print("computing FM FSR continuation (full-state handoff) ...", time.ctime())
     FMfsr = np.zeros((len(karr), zsteps))
     for kind in range(len(karr)):
-        endpoint = TCRFM[kind, 0, 0, :, -1]
+        endpoint = TCRFM[kind, 0, 0, :, -1].copy(); endpoint[0] *= pars.TCR_DELTA_B   # delta_b = 3 delta_gamma
 
         def _rhs_logz(lz, v, _k=karr[kind]):
             z = np.exp(lz)
@@ -200,7 +200,7 @@ else:
         lzgrid = np.linspace(np.log(zfsarr[kind]), np.log(600), zsteps)
         sol = solve_ivp(_rhs_logz, [lzgrid[0], lzgrid[-1]], list(endpoint),
                         method='LSODA', dense_output=True, atol=1e-9, rtol=1e-6)
-        FMfsr[kind] = sol.sol(lzgrid)[0]
+        FMfsr[kind] = sol.sol(lzgrid)[0]/pars.TCR_DELTA_B   # back to delta_gamma units for the envelope
     np.save(_fm_fsr_cache, FMfsr)
 
 FMenv = []
@@ -413,7 +413,7 @@ bcount20 = bindarr.index(bind)
 
 tfsbx = TCRalf[:, bcount20, thetaind, 1, :].copy()
 tfsby = TCRmag[:, bcount20, thetaind, 3, :].copy()
-tfsdelta = TCRmag[:, bcount20, thetaind, 0, :].copy()
+tfsdelta = pars.TCR_DELTA_B*TCRmag[:, bcount20, thetaind, 0, :].copy()   # delta_b = 3 delta_gamma on the TCR segment
 
 tfsfsbx = np.zeros((len(karr), zsteps))
 tfsfsby = np.zeros((len(karr), zsteps))
@@ -532,7 +532,7 @@ for cind, kind in enumerate(range(3, 53, 10)):
     axs[0, 1].semilogx(zarraymaster[kind], diff[thetaind, 3, :], c=red_colors5[cind],
                        label=r'$k \approx 10^{%.0f} \, \mathrm{Mpc}^{-1}$' % np.arange(5, 0, -1)[cind])
     axs[0, 1].semilogx(zfsarraymaster[kind], diff[thetaind, 3, -1] * fs[thetaind, 3, :], c=red_colors5[cind])
-    axs[1, 1].semilogx(zarraymaster[kind], diff[thetaind, 0, :], c=red_colors5[cind],
+    axs[1, 1].semilogx(zarraymaster[kind], pars.TCR_DELTA_B*diff[thetaind, 0, :], c=red_colors5[cind],
                        label=r'$k \approx 10^{%.0f} \, \mathrm{Mpc}^{-1}$' % np.arange(5, 0, -1)[cind])
     axs[1, 1].semilogx(zfsarraymaster[kind], diff[thetaind, 3, -1] * fs[thetaind, 0, :], c=red_colors5[cind])
     axs[0, 1].plot(zfsarr[kind], diff[thetaind, 3, -1], marker='D', color=red_colors5[cind], markersize=12)

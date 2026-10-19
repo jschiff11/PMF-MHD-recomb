@@ -21,6 +21,13 @@ import pickle
 import argparse
 
 from pmhd import cons, pars
+from pmhd.data.tables import tables_dir
+from pmhd.physics.source_assembly import eq63_term_enabled, _switch
+
+
+def a40c_term_enabled():
+    """Eq. (A40c) form of the T_b second-order equation (manuscript sync 2026-10); PMHD_A40C_TERM=0 restores the old form."""
+    return _switch("PMHD_A40C_TERM")
 from pmhd.data.grids import (
     k_grid, z_grid, eps_grid,
     load_or_generate_B0arr,
@@ -50,7 +57,7 @@ def main(input_bind, input_epsind):
     abar2 = np.zeros((len(zarr)))
     cbar2 = np.zeros((len(zarr)))
     for zind in range(len(zarr)):
-        with open(PROJECT_ROOT/f'src/pmhd/data/pre_stored_data/f2bars_dict/f2bars_m0_dict_zch_{zind}.pkl', 'rb') as f:
+        with open(tables_dir()/f'f2bars_dict/f2bars_m0_dict_zch_{zind}.pkl', 'rb') as f:
             f2bars_m0_master = pickle.load(f)  
         abar2[zind] = f2bars_m0_master[f'df/dnu'][0,0]
         cbar2[zind] = f2bars_m0_master[f'taus_phi'][0,0]
@@ -72,8 +79,17 @@ def main(input_bind, input_epsind):
 
     def Tbhom(z):
         return splev(z,Tbhomspl[0])
+    # third audit, finding 4 (PREREG addenda 12, 16): alpha_B(T_b) multiplies only the delta alpha_B response terms; the
+    # background-balance coefficient of x1s2 and the delta n delta x_e / delta x_e^2 terms keep alpha_B(T_gamma), consistent
+    # with the background x_e and f_eq (PMHD_TB_COEFF_TG=1 restores T_gamma everywhere)
+    def alphab_c(z):
+        return pars.alphab(z) if _switch("PMHD_TB_COEFF_TG", "0") else pars.alphabT(Tbhom(z))
 
     def x1squad_Tb(z, vect, xe):
+        # Component 1 (Delta2_b = <delta_Tb^(2)>): Eq. (A40c). The adiabatic and convective pieces combine to
+        # -(1/3)<d delta_b/dt delta_Tb> = +(1/3)(1+z)<Theta delta_Tb>; the pre-2026-10 form
+        # (2/3)(1+z)(<Theta delta_b> - <Theta delta_Tb>) lacked the convective part and carried a
+        # <Theta delta_b> term that exact Lagrangian continuity removes (PMHD_A40C_TERM=0 reproduces it).
 
         x1s2, Delta2_b = vect
 
@@ -151,8 +167,8 @@ def main(input_bind, input_epsind):
             -3* (1-P3LA2(z) ) * (1-xe_full(z))*cons.Alya * 
             ( ( sbar2interp(z) + (abar2interp(z)*(x1s2 - dmxecrossinterp(z) )/(1-xe_full(z))) ) / (1+pscinterp(z)*cbar2interp(z)) - 
              f00xecrossinterp(z)/(1-xe_full(z)) ) +
-            P3LA2(z) * pars.nh(z) * xe_full(z)**2 * pars.alphab(z) * (dalphabpref(z)*Tbdeltainterp(z) + dalphabpref2_11(z)*Tbrmsinterp(z) + dalphabpref(z) * Delta2_b ) +
-            2 * P3LA2(z) * pars.nh(z) * xe_full(z) * pars.alphab(z) * ( dmxecrossinterp(z) + dalphabpref(z)*Tbxeinterp(z) ) + 
+            P3LA2(z) * pars.nh(z) * xe_full(z)**2 * alphab_c(z) * (dalphabpref(z)*Tbdeltainterp(z) + dalphabpref2_11(z)*Tbrmsinterp(z) + dalphabpref(z) * Delta2_b ) +
+            2 * P3LA2(z) * pars.nh(z) * xe_full(z) * ( pars.alphab(z) * dmxecrossinterp(z) + alphab_c(z) * dalphabpref(z)*Tbxeinterp(z) ) + 
             P3LA2(z) * pars.nh(z) * pars.alphab(z) * dxedxecrossinterp(z) - 
             ( (1-P3LA2(z) ) * (3*cons.Alya + cons.L2s1s ) - 4*P3LA2(z)*pars.betab(z) ) * feqxecrossinterp(z) - conterminterp(z)) , 
             (-1/( (1+z)*pars.H(z) )) * ( 
@@ -161,12 +177,15 @@ def main(input_bind, input_epsind):
                 - (pars.Tcmb(z)/Tbhom(z))*Delta2_b 
                 - dGammacpref1*Tbxeinterp(z)
                 )
-                + (2/3)*(1+z)*(deltaThetainterp(z)-TbThetainterp(z))
+                + ((1/3)*(1+z)*TbThetainterp(z) if a40c_term_enabled()
+                   else (2/3)*(1+z)*(deltaThetainterp(z)-TbThetainterp(z)))
             )]
 
      
     ## Load in continuous term
-    cont = np.load(source_fncs/f'xe2contsource_B_{round(1e12*B0arr[input_bind])}pG_e{round(epsarr[input_epsind],3)}.npy')
+    # T_b-coupled continuum source (cont_source.py --tb); PMHD_TB_INPUTS=0 reproduces the pre-2026-10-12 use of the non-T_b one
+    _tbin = _switch('PMHD_TB_INPUTS')
+    cont = np.load(source_fncs/f'xe2contsource_{"Tb_" if _tbin else ""}B_{round(1e12*B0arr[input_bind])}pG_e{round(epsarr[input_epsind],3)}.npy')
 
     ## Build splines once here (outside x1squad) so they are not rebuilt on every ODE evaluation
     _zarr_flip = zarr[::-1]
@@ -174,7 +193,10 @@ def main(input_bind, input_epsind):
     _tck_feqxecross    = splrep(_zarr_flip, cross_corr['dfeqxecross'][::-1])
     _tck_dmxecross     = splrep(_zarr_flip, cross_corr['deltamxecross'][::-1])
     _tck_dxedxecross   = splrep(_zarr_flip, cross_corr['xerms'][::-1])
-    _tck_conterm       = splrep(_zarr_flip, cont[::-1])
+    # Eq. (63) convective term, as in source_assembly.solve_x1squad: -(1+z)<Theta delta x_e> in dx_1s^(2)/dt,
+    # folded into the subtracted continuum spline.
+    cont_eff = cont + ((1 + zarr)*cross_corr['xeThetacross'] if eq63_term_enabled() else 0.0)
+    _tck_conterm       = splrep(_zarr_flip, cont_eff[::-1])
     _tck_abar2         = splrep(np.flip(zarr), np.flip(abar2))
     _tck_sbar2         = splrep(np.flip(zarr), np.flip(sbar2))
     _tck_cbar2         = splrep(np.flip(zarr), np.flip(cbar2))
@@ -189,7 +211,8 @@ def main(input_bind, input_epsind):
     # Radau (implicit, stiff-aware) gives identical results to LSODA where LSODA converges
     # (verified: 0.0 difference), and additionally converges for stiff (bind, epsind) pairs
     # where LSODA's adaptive stepper fails with "ts must be strictly increasing or decreasing".
-    hold = solve_ivp(x1squad_Tb, [1900,600], [1e-20, 0.0], args=(xe_full_He,), method='Radau', dense_output=True, atol=1e-9, rtol=1e-6)
+    hold = solve_ivp(x1squad_Tb, [1900,600], [1e-20, 0.0], args=(xe_full_He,), method='Radau', dense_output=True, atol=1e-9, rtol=1e-6,
+                     max_step=1.0)   # dz cap, as in source_assembly.solve_x1squad (dense-output accuracy)
     norm = (abs(epsarr[input_epsind])/4) * (Lambda/(2*np.pi))**epsarr[input_epsind]
     ## Create \Delta x_e from solution (component 0 is x1s^{(2)})
     xe2 = norm * (-hold.sol(zarr)[0] + cross_corr['deltamxecross'])

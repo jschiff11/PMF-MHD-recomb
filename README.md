@@ -4,6 +4,26 @@ Numerical pipeline for computing the imprint of primordial magnetic fields (PMFs
 
 Companion code to arXiv:2506.16517 (see [Citation](#citation)).
 
+## October 2026 update
+
+This version goes with the paper as accepted for publication in Physical Review D. Since the previous release:
+
+- The code was brought into line with the accepted paper's equations. Among the changes: the convective term in the
+  second-order ionization equation, the optical-depth correlations integrated along the photon path in the
+  averaged visibility, the advection and lensing coefficients of the second-order source, first-order
+  Doppler/aberration terms, helium electrons in the free-streaming redshift, and a blackbody boundary at line centre
+  for the homogeneous Lyman-α solution. Physical constants are pinned to CODATA 2018.
+- The Lyman-α moment tables in `src/pmhd/data/pre_stored_data/` are rebuilt (non-reflecting closure at ℓ_max = 14
+  in all three moment hierarchies, first-order Doppler source); `TABLES_PROVENANCE.json` records how they were built.
+- The transfer-function solves use component-scaled absolute tolerances by default (`PMHD_ATOL_SCALED=1`, see
+  `ode_atol.py`); `PMHD_ATOL_SCALED=0` reproduces the earlier behaviour.
+- `paper_data_plots/plots/` holds the final figures, and `paper_data_plots/manuscript_sync/final_results.npz` the
+  numbers behind the figures and the text (Δz_* for every field and tilt, Δx_e histories, the T_b pairs).
+- The verification record is `paper_data_plots/doppler_nrbc/VERIFICATION.md`.
+
+The full grids of intermediate outputs (~150 GB) are not in the repository; `paper_data_plots/README.md` describes how
+to regenerate them.
+
 ---
 
 ## Physics overview
@@ -125,12 +145,13 @@ PMF-MHD-recomb/
 │   ├── pars.py                    # Core physics: ionization histories, ODEs, profiles
 │   ├── data/
 │   │   ├── grids.py               # Grid generators (k, z, θ, B₀, ε)
-│   │   └── pre_stored_data/       # Pre-computed Boltzmann outputs (f₂bars, Zenodo)
+│   │   ├── tables.py              # Location and provenance check of the moment tables
+│   │   └── pre_stored_data/       # Lyman-α moment tables (f₂bars, ā/b̄/c̄) + TABLES_PROVENANCE.json
 │   └── physics/
 │       ├── TCR_Tfs.py             # Tight-coupling transfer functions
 │       ├── FSR_saha_Tfs.py        # Free-streaming TFs (Saha ionization)
 │       ├── FSR_TLA_Tfs.py         # Free-streaming TFs (3-level atom)
-│       ├── TCR_Tfs_FM.py          # TCR with Faraday mixing
+│       ├── TCR_Tfs_FM.py          # Fast-mode (density-seeded) TCR transfer functions
 │       ├── angle_avging_saha.py   # Angular averaging (Saha)
 │       ├── angle_avging_TLA.py    # Angular averaging (TLA)
 │       ├── angle_avging_opt_depth.py
@@ -142,6 +163,13 @@ PMF-MHD-recomb/
 │       ├── xe2.py                 # Second-order ionization δxe²
 │       ├── opt_depth.py           # Optical depth
 │       ├── visib_integ.py         # Visibility function
+│       ├── source_assembly.py     # Cross-correlations and second-order Lyman-α source terms (shared)
+│       ├── single_mode_source.py  # Second-order ionization shift for a single (k, θ) mode
+│       ├── ode_atol.py            # Component-scaled tolerances for the transfer-function solves
+│       ├── theta_pool.py          # Parallel per-angle integration (PMHD_NPROC)
+│       ├── assemble_fbars_master.py # Assembles the moment tables from per-redshift chunks
+│       ├── slurmloop_*.py         # SLURM drivers for the full grid (see paper_data_plots/README.md)
+│       ├── test_*.py              # Regression and table-builder tests
 │       └── *_Tb.py                # Baryon-heating (T_b) variants of the above stages
 ├── analysis/
 │   ├── plot_transfer_and_damping.py
@@ -150,7 +178,9 @@ PMF-MHD-recomb/
 │   ├── plot_baryon_heating.py
 │   └── plot_moments_and_lineshape.py
 ├── paper_data_plots/
-│   ├── plots/                     # The paper's 19 figures (tracked in git)
+│   ├── plots/                     # The 20 figure files (the paper uses 14), tracked in git
+│   ├── manuscript_sync/           # final_results.npz: the numbers behind the figures and the text
+│   ├── doppler_nrbc/              # VERIFICATION.md: verification record of the current pipeline
 │   ├── data/                      # Full-grid pipeline outputs for the paper (gitignored, ~150GB)
 │   └── README.md                  # SLURM-driven regeneration workflow for the paper dataset/figures
 ├── data/
@@ -164,9 +194,13 @@ PMF-MHD-recomb/
 
 ## Pre-stored data
 
-The `src/pmhd/data/pre_stored_data/` directory contains pre-computed Boltzmann solver outputs (`f2bars` dictionaries) that are required by the correlation stage. These are already tracked in this repository (~46 MB).
+The `src/pmhd/data/pre_stored_data/` directory contains the Lyman-α moment tables: the `f2bars` dictionaries and the
+ā, b̄, c̄ interpolation tables read by the TLA, correlation and second-order stages. They are tracked in this repository
+(~43 MB). `TABLES_PROVENANCE.json` records the builder settings and the background they were built on, and the code
+checks it when it reads the tables.
 
-To reproduce them from scratch instead, run `firstOmoments_and_secondO_soln_PRD_fullk.py` first.
+To rebuild them, run `firstOmoments_and_secondO_soln_PRD_fullk.py` per redshift chunk (driver `slurmloop_fbars.py`)
+and assemble the results with `assemble_fbars_master.py`; see step 0 in `paper_data_plots/README.md`.
 
 ---
 

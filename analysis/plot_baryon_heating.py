@@ -69,6 +69,24 @@ def pg(bind):
     return round(1e12 * B0arr[bind])
 
 
+# Percent-difference curves (Figs 13, 15) divide by the no-Tb power. Where that power is exactly zero (modes still
+# tightly coupled at that z, k < 1 Mpc^-1) or negligible, the ratio is 0/0 or noise; a spline through those points
+# returned NaN for the whole curve (the z = 1200/1100/1000 curves were missing from Fig 15). Fit through valid k only
+# and leave the masked k blank.
+PCTDIFF_MASK_THR = 1e-10   # mask where power < PCTDIFF_MASK_THR x its max over the plotted k at that z
+
+
+def pctdiff_curve(kfine, kgrid, num, other, kplot_min):
+    """100*|(num - other)/num| on kfine, splined through the k where num is finite and not negligible."""
+    r = (num - other)/num
+    ref = np.max(np.abs(num[kgrid >= kplot_min]))
+    bad = ~np.isfinite(r) | (np.abs(num) < PCTDIFF_MASK_THR*ref)
+    ok = ~bad[::-1]
+    y = 100*np.abs(splev(kfine, splrep(kgrid[::-1][ok], r[::-1][ok])))
+    badf = np.interp(np.log(kfine), np.log(kgrid[::-1]), bad[::-1].astype(float))
+    return np.where(badf > 0, np.nan, y)
+
+
 def add_log_minor_ticks(ax):
     """Force minor tick marks onto any log-scaled axis. matplotlib's default
     LogLocator sometimes auto-suppresses minor ticks when an axis spans many
@@ -178,8 +196,8 @@ for bcount, bind in enumerate(bindarr2):
     for zi in range(len(zindarr)):
         zind = zindarr[zi]
         ax.loglog(karrfine * cons.mpc,
-                 100 * abs(splev(karrfine * cons.mpc, splrep(karr[::-1] * cons.mpc,
-                            ((deltamdeltambar - deltamdeltambar_Tb) / deltamdeltambar)[::-1, zind, bind]))),
+                 pctdiff_curve(karrfine * cons.mpc, karr * cons.mpc, deltamdeltambar[:, zind, bind],
+                               deltamdeltambar_Tb[:, zind, bind], karrfine[-1] * cons.mpc),
                  label=f'$z={zarr[zind]-1:.0f}$', color=colors2[zi])
     ax.set_xlabel(r'$k \; (Mpc^{-1})$', fontsize=16)
     ax.set_title(f'$B_0 = $ {pg(bind)}pG', fontsize=20)
@@ -232,8 +250,8 @@ for bcount, bind in enumerate(bindarr2):
     for zi in range(len(zindarr)):
         zind = zindarr[zi]
         ax.loglog(karrfine * cons.mpc,
-                 100 * abs(splev(karrfine * cons.mpc, splrep(karr[::-1] * cons.mpc,
-                            ((xexebar - xexebar_Tb) / xexebar)[::-1, zind, bind]))),
+                 pctdiff_curve(karrfine * cons.mpc, karr * cons.mpc, xexebar[:, zind, bind],
+                               xexebar_Tb[:, zind, bind], karrfine[-1] * cons.mpc),
                  label=f'$z={zarr[zind]-1:.0f}$', color=colors2[zi])
     ax.set_xlabel(r'$k \; (Mpc^{-1})$', fontsize=16)
     ax.set_title(f'$B_0 = $ {pg(bind)}pG', fontsize=20)
@@ -472,6 +490,9 @@ def _kint_upto(kweight, vals, kmax_idx):
     return splint(k_sub[-1], k_sub[0], splrep(np.flip(k_sub), np.flip(integrand_sub)))
 
 
+Y_PIECES = {}   # (bind, epsind) -> drag / Thomson pieces of y over z = 600-1900, filled by y_parameter()
+
+
 def y_parameter(bind, epsind, ang_avg_cache):
     """Published z=1900->600 piece, FSR-TLA, with the k-integral truncated at
     each z to exclude modes still tightly coupled there (zfs(k) < z). Without
@@ -540,6 +561,10 @@ def y_parameter(bind, epsind, ang_avg_cache):
     Gamma = Gamma_drag - dq2dt_T
     integrand = Gamma / ((1 + zarr) ** 5 * H_z)
     delta_rho_gamma_comoving = -cumulative_trapezoid(integrand, zarr, initial=0.0)
+    # diagnostic split of the two sources (saved next to Figure 20): drag-dissipation vs Thomson relaxation
+    _ypc = lambda G: -cumulative_trapezoid(G / ((1 + zarr) ** 5 * H_z), zarr, initial=0.0) / (4 * rho_gamma_comoving0)
+    Y_PIECES[(bind, epsind)] = dict(z=zarr, y_drag=_ypc(Gamma_drag), y_T=_ypc(-dq2dt_T),
+                                    y_T_ion=_ypc(-term_ionization), y_T_temp=_ypc(term_temperature))
     return delta_rho_gamma_comoving / (4 * rho_gamma_comoving0)
 
 
@@ -590,7 +615,9 @@ def _interp_onto_target(zgrid, arr, ztarget_subset):
     return splev(ztarget_subset, splrep(zgrid[order], arr[order]))
 
 
-FIG20_CACHE_DIR = REPO_ROOT / "analysis" / ".fig20_raw_ext_cache"
+# PMHD_CACHEDIR relocates the cache so a run on a different data set (e.g. PMHD_OUTDIR=data_doppler)
+# does not pick up curves cached from another one; default unchanged.
+FIG20_CACHE_DIR = Path(os.environ.get("PMHD_CACHEDIR", str(REPO_ROOT / "analysis"))) / ".fig20_raw_ext_cache"
 
 
 def _load_raw_FSR_extension(bind):
@@ -655,7 +682,7 @@ def _y_extension_from_raw(vx_FSR, vy_FSR, vz_FSR, epsind):
 
     z = ZTARGET
     rhob_z = rhob0 * (1 + z) ** 3
-    alpha_x = pars.f_lambda(z) * (1 - cons.yhe) * pars.xesaha_full(z)
+    alpha_x = pars.f_lambda(z) * (1 - cons.yhe) * pars.xesaha_full_He(z)   # same He-inclusive drag as the y/z components and the Alfven TFs (fixed 2026-10-12)
     alpha_yz = pars.f_lambda(z) * (1 - cons.yhe) * pars.xesaha_full_He(z)
     Gamma_raw = 2 * alpha_x * 0.5 * rhob_z * vxrms + 2 * alpha_yz * 0.5 * rhob_z * (vyrms + vzrms)
     norm = (abs(epsarr[epsind]) / 4) * (Lambda / (2 * np.pi)) ** epsarr[epsind]
@@ -716,6 +743,7 @@ for ax in axs:
 axs[0].legend(fontsize=8); axs[1].legend(fontsize=8)
 axs[0].set_ylabel(r'$|y|$', fontsize=14)
 plt.tight_layout()
+np.savez(PLOTDIR / "fig20_y_pieces.npz", **{f"b{b}_e{e}_{k}": v for (b, e), d in Y_PIECES.items() for k, v in d.items()})
 plt.savefig(PLOTDIR / "20_photon_bath_ydistortion.png", dpi=150)
 plt.close(fig)
 print("saved 20_photon_bath_ydistortion.png")

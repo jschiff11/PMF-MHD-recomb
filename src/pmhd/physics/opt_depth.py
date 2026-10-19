@@ -32,7 +32,7 @@ from pmhd.data.grids import (
 ## Initialize redshift, spectral index, wavenumber, magnetic field strength arrays 
 
 
-def main(input_bind):
+def main(input_bind, tb=False):
     print(time.ctime())
     karr = k_grid()
     B0arr = load_or_generate_B0arr()
@@ -53,13 +53,14 @@ def main(input_bind):
     dtaudtaubar = np.zeros( ( len(karr), len(zarr)) )
     dtaudtaudotbar = np.zeros( ( len(karr), len(zarr)) )
     
-    ang_avg_TLA = OUTBASE/f"ang_avg/TLA/B_{round(1e12*B0arr[input_bind])}pG"
+    _sfx = "_Tb" if tb else ""   # --tb: the T_b-coupled photon-path products
+    ang_avg_TLA = OUTBASE/(f"ang_avg/Tb/B_{round(1e12*B0arr[input_bind])}pG" if tb else f"ang_avg/TLA/B_{round(1e12*B0arr[input_bind])}pG")
     ang_avg_TLA.mkdir(parents=True, exist_ok=True)
         
 
     for kind in range(len(karr)):
-        dtaudtaubar[kind,:] = np.load(ang_avg_TLA/f'dtaudtaubar_k{kind}.npy')
-        dtaudtaudotbar[kind,:] = np.load(ang_avg_TLA/f'dtaudtaudotbar_k{kind}.npy')
+        dtaudtaubar[kind,:] = np.load(ang_avg_TLA/f'dtaudtaubar{_sfx}_k{kind}.npy')
+        dtaudtaudotbar[kind,:] = np.load(ang_avg_TLA/f'dtaudtaudotbar{_sfx}_k{kind}.npy')
    
     for epsind in range(len(epsarr)):
         for z in range(len(zarr)):  
@@ -84,18 +85,19 @@ def main(input_bind):
     cross_corrsave = OUTBASE/"cross_corr"
     # Save results
     cross_corrsave.mkdir(parents=True, exist_ok=True)
-    np.save(cross_corrsave/f'dtaurms_B_{round(1e12*B0arr[input_bind])}pG.npy', dtaurms)
-    np.save(cross_corrsave/f'dtaudtaudotcross_B_{round(1e12*B0arr[input_bind])}pG.npy', dtaudtaudotcross)
+    np.save(cross_corrsave/f'dtaurms{_sfx}_B_{round(1e12*B0arr[input_bind])}pG.npy', dtaurms)
+    np.save(cross_corrsave/f'dtaudtaudotcross{_sfx}_B_{round(1e12*B0arr[input_bind])}pG.npy', dtaudtaudotcross)
 
 if __name__=='__main__':
     print(time.ctime())
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--bind", type=int, default=40)
+    parser.add_argument("--tb", action="store_true")
 
     args = parser.parse_args()
 
-    main(args.bind)
+    main(args.bind, tb=args.tb)
     
         
 

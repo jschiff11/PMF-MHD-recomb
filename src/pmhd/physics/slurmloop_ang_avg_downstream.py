@@ -19,7 +19,11 @@ import time
 REPO = "/home/jonschiff/PMF-MHD-recomb"
 PY = f"{REPO}/.conda/bin/python"
 OUTDIR = os.environ.get("PMHD_OUTDIR", "/home/jonschiff/PMF-MHD-recomb/paper_data_plots/data")
-LOGDIR = "/home/jonschiff/lib/PRD/He_rec/logs"
+# logs live with the run they belong to (previously a shared /home/jonschiff/lib/PRD/He_rec/logs)
+LOGDIR = os.environ.get("PMHD_LOGDIR", os.path.join(OUTDIR, "logs"))
+# moment tables to read (pmhd.data.tables) and whether the Doppler/aberration second-order terms are on
+TABLES_DIR = os.environ.get("PMHD_TABLES_DIR", "/home/jonschiff/PMF-MHD-recomb/src/pmhd/data/pre_stored_data")
+DOPPLER_TERMS = os.environ.get("PMHD_DOPPLER_TERMS", "1")
 NKIND = 69
 NBIND = 61
 
@@ -33,6 +37,8 @@ slurm_template = """#!/bin/bash
 
 export PYTHONPATH={repo}/src
 export PMHD_OUTDIR={outdir}
+export PMHD_TABLES_DIR={tables}
+export PMHD_DOPPLER_TERMS={dop}
 cd {repo}/src/pmhd/physics
 
 for k in $(seq 0 {kmax}); do
@@ -59,7 +65,7 @@ if __name__ == "__main__":
     n = 0
     for bind in binds:
         job_script = slurm_template.format(bind=bind, kmax=NKIND - 1,
-                                           repo=REPO, py=PY, outdir=OUTDIR, logdir=LOGDIR)
+                                           repo=REPO, py=PY, outdir=OUTDIR, logdir=LOGDIR, tables=TABLES_DIR, dop=DOPPLER_TERMS)
         job_filename = f"{LOGDIR}/jobangdown_b{bind}.slurm"
         with open(job_filename, "w") as f:
             f.write(job_script)

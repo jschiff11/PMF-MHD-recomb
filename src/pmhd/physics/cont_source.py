@@ -23,12 +23,13 @@ import pickle
 import argparse
 
 from pmhd import cons, pars
+from pmhd.physics.source_assembly import assemble_cont_at_z, splint_reducer
 from pmhd.data.grids import (
     k_grid, z_grid, eps_grid,
     load_or_generate_B0arr,
 )
 
-def main(input_bind, input_epsind):
+def main(input_bind, input_epsind, tb=False):
     print(time.ctime())
     karr = k_grid()
     B0arr = load_or_generate_B0arr()
@@ -59,7 +60,9 @@ def main(input_bind, input_epsind):
     PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
     OUTBASE = Path(os.environ.get("PMHD_OUTDIR", str(PROJECT_ROOT / "data/outputs")))
-    ang_avg_TLA = OUTBASE/f"ang_avg/TLA/B_{round(1e12*B0arr[input_bind])}pG"
+    # --tb: build the continuum source from the T_b-coupled angle averages (Eq. B53 with the T_b transfer functions)
+    ang_avg_TLA = OUTBASE/(f"ang_avg/Tb/B_{round(1e12*B0arr[input_bind])}pG" if tb else f"ang_avg/TLA/B_{round(1e12*B0arr[input_bind])}pG")
+    _keys = ["deltamdeltambar", "xedeltambar"] if tb else None
     
     ang_avg_dict_master = {}
     for k in [
@@ -71,9 +74,9 @@ def main(input_bind, input_epsind):
         ang_avg_dict_master[k] = np.zeros( ( len(karr), len(zarr)) )
 
     for kind in range(len(karr)):
-        with open(ang_avg_TLA/f'ang_avg_k{kind}.pkl', 'rb') as f:
+        with open(ang_avg_TLA/(f'ang_avg_k{kind}_Tb.pkl' if tb else f'ang_avg_k{kind}.pkl'), 'rb') as f:
             ang_avg_dict = pickle.load(f)      
-        for k in [
+        for k in _keys or [
         'bxbxbar', 'bybybar', 'PhixPhixbar',
         'PhiyPhiybar', 'ThetaThetabar', 'PhiyThetabar',
         'deltamThetabar', 'deltamdeltambar', 'xexebar', 'xedeltambar', 'xeThetabar',
@@ -81,23 +84,20 @@ def main(input_bind, input_epsind):
             ]:    
             ang_avg_dict_master[k][kind] = ang_avg_dict[k]
 
+    # Assembly shared with the single-mode path via pmhd.physics.source_assembly.
+    reduce_ps = splint_reducer(karr, epsarr[input_epsind])
     xe2contsource = np.zeros( (len(zarr) ) )
-    for z in range(len(zarr)):            
-        ## Compute all relevant rms and cross correlations needed for second order perturbed ionization fraction 
-        
-        xe2contsource[z] = splint(
-             karr[-1], karr[0], (splrep(
-                np.flip(karr), np.flip(
-                    karr**(epsarr[input_epsind] - 1) * kappa(karr,zarr[z]) * ( 
-                        B1con(zarr[z])*ang_avg_dict_master['deltamdeltambar'][:,z] + B2con(zarr[z])*ang_avg_dict_master['xedeltambar'][:,z] ) 
-            )))
-        )
+    for z in range(len(zarr)):
+        ## Compute all relevant rms and cross correlations needed for second order perturbed ionization fraction
+        bars = {'deltamdeltambar': ang_avg_dict_master['deltamdeltambar'][:, z],
+                'xedeltambar':     ang_avg_dict_master['xedeltambar'][:, z]}
+        xe2contsource[z] = assemble_cont_at_z(bars, karr, zarr[z], xe_full, reduce_ps)
     
     source_fncs = OUTBASE/"source_fncs"
     source_fncs.mkdir(parents=True, exist_ok=True)
 
     # Save results
-    np.save(source_fncs/f'xe2contsource_B_{round(1e12*B0arr[input_bind])}pG_e{round(epsarr[input_epsind],3)}.npy', xe2contsource)   
+    np.save(source_fncs/f'xe2contsource_{"Tb_" if tb else ""}B_{round(1e12*B0arr[input_bind])}pG_e{round(epsarr[input_epsind],3)}.npy', xe2contsource)   
 
 if __name__=='__main__':
     print(time.ctime())
@@ -105,10 +105,11 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--bind", type=int, default=40)
     parser.add_argument("--epsind", type=int, default=9)
+    parser.add_argument("--tb", action="store_true", help="use the T_b-coupled angle averages (ang_avg/Tb)")
 
     args = parser.parse_args()
 
-    main(args.bind, args.epsind)
+    main(args.bind, args.epsind, tb=args.tb)
     
 
 print(time.ctime())

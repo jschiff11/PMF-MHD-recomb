@@ -36,3 +36,21 @@ paper_data_plots/data/
 # Cached expensive intermediate results (regenerable from paper_data_plots/data/)
 analysis/.fig20_raw_ext_cache/
 analysis/.fig07_local3la_cache/
+
+# Doppler/NRBC pipeline regeneration (parallel to data/ until promotion)
+paper_data_plots/data_doppler/
+paper_data_plots/data_baseline/
+paper_data_plots/data_nograv/
+paper_data_plots/data_advfix/
+paper_data_plots/data_sync_pilot/
+paper_data_plots/data_sync/
+paper_data_plots/plots_sync/
+paper_data_plots/plots_sync_before_advlens/
+src/pmhd/data/pre_stored_data_prev/
+src/pmhd/data/pre_stored_data_doppler/
+
+# Pipeline working directories: output grids and intermediate table sets (several GB; see
+# paper_data_plots/manuscript_sync/README.md for what the final data set is and where it lives)
+paper_data_plots/data_*/
+paper_data_plots/plots_*/
+src/pmhd/data/pre_stored_data_*/

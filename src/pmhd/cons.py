@@ -1,6 +1,12 @@
 import numpy as np
 
-from astropy import constants as const
+# Physical constants come from the CODATA 2018 set explicitly, not from Astropy's default collection (CODATA 2022 from
+# Astropy 8 on). The shipped background (data/pre_stored_data/xe_peebs_tight.npy) and the moment tables were built with
+# CODATA 2018, and the near-equilibrium cancellation of the line departure turns the 1.4e-9 change of m_e between the two
+# sets into a 0.3% change of the tables at z = 1900 (PREREG addendum 17, item 3). Changing the set requires rebuilding
+# the background and every table; pars.py refuses a background built with other constants.
+CODATA_SET = "codata2018"
+from astropy.constants import codata2018 as const
 from astropy.cosmology import Planck18 as cosmo
 
 

@@ -8,6 +8,9 @@ from scipy.integrate import odeint, solve_ivp
 from scipy.interpolate import splrep, splev
 
 from pmhd import cons, pars
+from pmhd.physics.theta_pool import theta_map
+from pmhd.physics import ode_atol   # PMHD_ATOL_SCALED (addendum 20); off: the production calls
+from pmhd.data.tables import tables_dir
 from pmhd.data.grids import (
     k_grid,
     theta_grid,
@@ -18,6 +21,12 @@ from pmhd.data.grids import (
 import pickle
 
 ODE_METHOD = os.environ.get("PMHD_ODE_METHOD", "LSODA")
+# PMHD_TOL_SCALE multiplies the solver tolerances (convergence tests), floored as in FSR_TLA_Tfs.py.
+TOL_SCALE = float(os.environ.get("PMHD_TOL_SCALE", "1.0"))
+def _rtol(base):
+    return max(base*TOL_SCALE, 1e-12)
+def _atol(base):
+    return max(base*TOL_SCALE, 1e-14)
 
 
 def main(input_bind, input_kind):
@@ -50,13 +59,13 @@ def main(input_bind, input_kind):
     def B2con(z):
         return xe_full(z) * pars.nh(z) *  (pars.alpha1s(z) - pars.alphab(z)) * (2-xe_full(z))/(1-xe_full(z))
 
-    with open(PROJECT_ROOT/'src/pmhd/data/pre_stored_data/abarinterpmaster.pkl', 'rb') as f:
+    with open(tables_dir()/'abarinterpmaster.pkl', 'rb') as f:
         abarinterpmaster = pickle.load(f)
 
-    with open(PROJECT_ROOT/'src/pmhd/data/pre_stored_data/bbarinterpmaster.pkl', 'rb') as f:
+    with open(tables_dir()/'bbarinterpmaster.pkl', 'rb') as f:
         bbarinterpmaster = pickle.load(f)
 
-    with open(PROJECT_ROOT/'src/pmhd/data/pre_stored_data/cbarinterpmaster.pkl', 'rb') as f:
+    with open(tables_dir()/'cbarinterpmaster.pkl', 'rb') as f:
         cbarinterpmaster = pickle.load(f)
 
     def abarinterpfunc(z,kind):
@@ -85,7 +94,7 @@ def main(input_bind, input_kind):
 
     resultsalf = np.zeros(( len(thetaarr) , 2, 10**4))
     resultsmag = np.zeros(( len(thetaarr), 6, 10**4 ))
-    for thetaind in range(len(thetaarr)):
+    def _one_theta(thetaind):   # independent per angle: parallel with PMHD_NPROC > 1, bit-identical to the serial loop
         zsplhold = np.logspace(np.log10(zfsarr[input_kind]),np.log10(zend),num = 10**4)[::-1]
         Phixinit = splev( zstartarr[input_kind], splrep( zsplhold, fssahaalf[thetaind,0,::-1] ) )
         bxinit = splev( zstartarr[input_kind], splrep( zsplhold, fssahaalf[thetaind,1,::-1] ) )
@@ -101,21 +110,24 @@ def main(input_bind, input_kind):
         # Tb^(1) -> 0 at high z: tight Compton coupling drives temperature perturbation to zero
         Tbinit = 0.0
 
-        sol = solve_ivp( pars.FSRTLAmag_Tb, [zstartarr[input_kind], zend],
+        mag_row = ode_atol.solve_on_grid( pars.FSRTLAmag_Tb, [zstartarr[input_kind], zend],
                 np.array([deltainit, Thetainit, Phiyinit, byinit, xeinit, Tbinit]),
+                np.logspace(np.log10(zstartarr[input_kind]),np.log10(zend), num = 10**4),
                 args=(
                     karr[input_kind], input_kind, thetaarr[thetaind], B0arr[input_bind],
                     xe_full, xe_full_He, abarinterpfunc, bbarinterpfunc, cbarinterpfunc,
                     Tbhom, Acon, B1con, B2con
-                ), method=ODE_METHOD, dense_output=True, atol=1e-9, rtol=1e-6 )
+                ), method=ODE_METHOD, atol=_atol(1e-9), rtol=_rtol(1e-6) )
 
-        resultsmag[thetaind,:,:] = sol.sol(np.logspace(np.log10(zstartarr[input_kind]),np.log10(zend), num = 10**4))
-
-        sol = solve_ivp( pars.FSRTLAalf, [zstartarr[input_kind], zend], np.array([Phixinit, bxinit]), args=(
-                karr[input_kind], thetaarr[thetaind], B0arr[input_bind],xe_full_He), method = ODE_METHOD,
-                 dense_output=True )
-
-        resultsalf[thetaind,:,:] = sol.sol(np.logspace(np.log10(zstartarr[input_kind]),np.log10(zend), num = 10**4))
+        # scipy's default tolerances (1e-3, 1e-6) in production; with PMHD_ATOL_SCALED the magnetosonic tolerances
+        # through _rtol/_atol, since Phi_x can be ~1e-12 of b_x (addenda 20, 21)
+        alf_tol = dict(rtol=_rtol(1e-6), atol=_atol(1e-9)) if ode_atol.SCALED else {}
+        alf_row = ode_atol.solve_on_grid( pars.FSRTLAalf, [zstartarr[input_kind], zend], np.array([Phixinit, bxinit]),
+                np.logspace(np.log10(zstartarr[input_kind]),np.log10(zend), num = 10**4), args=(
+                karr[input_kind], thetaarr[thetaind], B0arr[input_bind],xe_full_He), method = ODE_METHOD, **alf_tol )
+        return alf_row, mag_row
+    for thetaind, (a, m) in enumerate(theta_map(_one_theta, len(thetaarr))):
+        resultsalf[thetaind,:,:] = a; resultsmag[thetaind,:,:] = m
 
     # -----------------------------
     # Save the results

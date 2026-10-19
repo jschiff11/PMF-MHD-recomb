@@ -1,8 +1,9 @@
 import os, sys
+from pathlib import Path
 
 import numpy as np
 
-from astropy import constants as const
+from astropy.constants import codata2018 as const   # pinned to the set of cons.py (CODATA_SET)
 from astropy.cosmology import Planck18 as cosmo
 
 from . import cons
@@ -12,6 +13,17 @@ from scipy.integrate import odeint
 from scipy.interpolate import interp1d
 
 from scipy.interpolate import splrep, splev, splint
+
+# First-order Newtonian gravity (grad(varphi)/a in the FSR Euler equation, Poisson-sourced by the baryon density):
+# PMHD_GRAVITY=0 switches it off in the FSR-Saha, TLA and T_b-TLA Theta equations, for the phi-subdominance
+# test (paper_data_plots/phi_terms/PREREG.md). Default 1: multiplying by 1.0 is exact, so results are unchanged.
+GRAVITY = float(os.environ.get("PMHD_GRAVITY", "1"))
+
+
+# Tight-coupling density: TCmag evolves delta_gamma = delta T_gamma/T_gamma (Eq. 7a, d delta_gamma/dt = (1/3) d delta_b/dt),
+# so the baryon density contrast on the TCR segment is delta_b = 3 delta_gamma. Consumers that read the TCRmag delta column
+# as delta_b multiply by this factor (2026-10-12 fix; PMHD_TCR_DELTA_B=0 reproduces the pre-fix value 1).
+TCR_DELTA_B = 3.0 if os.environ.get("PMHD_TCR_DELTA_B", "1") != "0" else 1.0
 
 
 def Tcmb(z):
@@ -56,6 +68,10 @@ def alpha1s(z):
     """
     alpha = 1.0e-13*5.596*np.power(Tcmb(z)/1.0e4,-0.6038)/(1.0+(0.3436*np.power(Tcmb(z)/1.0e4,0.4479)))
     return alpha
+
+def alphabT(T):
+    r"""Case-B recombination coefficient as a function of temperature (Pequignot et al. fit, as alphab)."""
+    return (1e-13)*((4.309*(T/10**4)**-0.6166)/(1 + 0.6703*(T/10**4)**0.53))
 
 def alphab(z):
     r"""
@@ -217,7 +233,55 @@ def sahapol(z):
 # --- module-level cached splines (built once at import time) ---
 _xe_zstart = 2300
 _xe_saha_arr = sahataylor(np.arange(3e4, _xe_zstart, -1))
-_xe_peebs = odeint(RHSsob, sahataylor(_xe_zstart), np.arange(_xe_zstart, 200, -1))
+_xe_zgrid = np.arange(_xe_zstart, 200, -1)
+def _xe_peebles_tight():
+    """Homogeneous Peebles solve with tight tolerances (third audit, finding 1): the line departure f_eq - f_bb is a
+    near-cancellation at z >= 1750 and inherits the ~1e-8 noise of the default odeint solve. Cached next to the tables;
+    PMHD_XE_BG_OLD=1 restores the default-tolerance solve."""
+    from scipy.integrate import solve_ivp
+    sol = solve_ivp(lambda z, y: RHSsob(y, z), [_xe_zstart, 200], [sahataylor(_xe_zstart)], method="Radau",
+                    rtol=1e-11, atol=1e-13, max_step=1.0, dense_output=True)
+    return sol.sol(_xe_zgrid)[0]
+_xe_bg_cache = Path(__file__).resolve().parent / "data/pre_stored_data/xe_peebs_tight.npy"
+_xe_bg_provenance = _xe_bg_cache.with_suffix(".json")
+
+
+def _bg_fingerprint():
+    """What the cached background depends on besides the code: the constants set and the values entering the Peebles
+    equation (PREREG addendum 17, item 3)."""
+    return {"codata_set": cons.CODATA_SET, "h": cons.h, "kb": cons.kb, "me": cons.me, "en1": cons.en1, "c": cons.c,
+            "H_1100": float(H(1100.0)), "nh_1100": float(nh(1100.0)), "Tcmb_1100": float(Tcmb(1100.0)),
+            "solver": "Radau rtol=1e-11 atol=1e-13 max_step=1 from z=2300 (sahataylor) to z=201, unit steps"}
+
+
+def _check_bg_fingerprint(recorded, current, rtol=1e-12):
+    """Raise unless the cached background was built with the constants and cosmology in use now."""
+    bad = [k for k in current if k not in recorded or (
+        recorded[k] != current[k] if isinstance(current[k], str)
+        else abs(recorded[k] - current[k]) > rtol*abs(current[k]))]
+    if bad:
+        raise RuntimeError(f"The cached background {_xe_bg_cache.name} was built with different inputs ({', '.join(bad)}): "
+                           f"recorded {[recorded.get(k) for k in bad]}, now {[current[k] for k in bad]}. The moment "
+                           "tables are built on that background; changing constants or cosmology requires rebuilding the "
+                           "background and every table (PREREG addendum 17).")
+
+
+if os.environ.get("PMHD_XE_BG_OLD", "0") != "0":
+    _xe_peebs = odeint(RHSsob, sahataylor(_xe_zstart), _xe_zgrid)
+elif _xe_bg_cache.exists():
+    import json as _json
+    if not _xe_bg_provenance.exists():
+        raise RuntimeError(f"{_xe_bg_provenance} is missing: the background cache has no provenance record")
+    _check_bg_fingerprint(_json.loads(_xe_bg_provenance.read_text()), _bg_fingerprint())
+    _xe_peebs = np.load(_xe_bg_cache)[:, None]
+else:
+    import json as _json
+    _xe_peebs = _xe_peebles_tight()[:, None]
+    try:
+        np.save(_xe_bg_cache, _xe_peebs[:, 0])
+        _xe_bg_provenance.write_text(_json.dumps(_bg_fingerprint(), indent=1))
+    except OSError:
+        pass
 _xe_hold = splrep(
     np.flip(np.concatenate([np.linspace(1e11, 3.1e4, 10000), np.arange(3e4, 200, -1)])),
     np.flip(np.concatenate([np.ones(10000), _xe_saha_arr, _xe_peebs[:, 0]]))
@@ -348,8 +412,14 @@ def Hprime(z):
     r"""
     Returns the derivative of the Hubble parameter wrt to redshift, dH/dz
     """
-    orad = cosmo.Ogamma0 * (1 + cons.Neff * (7.0/8.0) * np.power(4.0/11.0, 4.0/3.0))
-    return cons.H0**2 * (3 * cons.omat * (1+z)**2 + 4 * orad * (1+z)**3) / (2 * H(z))
+    # dH/dz of the H used everywhere else (astropy Planck18, massive neutrinos): central difference, relative step 1e-5
+    # (truncation ~1e-10, round-off ~1e-11). The pre-2026-10-12 closed form (matter + massless radiation) differed from it by
+    # up to 4e-4 at z = 600 (PMHD_HPRIME_OLD=1 restores it).
+    if os.environ.get("PMHD_HPRIME_OLD", "0") != "0":
+        orad = cosmo.Ogamma0 * (1 + cons.Neff * (7.0/8.0) * np.power(4.0/11.0, 4.0/3.0))
+        return cons.H0**2 * (3 * cons.omat * (1+z)**2 + 4 * orad * (1+z)**3) / (2 * H(z))
+    d = 1e-5
+    return (H(z*(1 + d)) - H(z*(1 - d)))/(2*z*d)
 
 ### Fluid ODEs: 
 ### All quantities are non-dimensionalized. We define Phi_x = ikv_x/H, Phi_y = ikv_y/H, Theta = ikv_z/H. 
@@ -420,7 +490,7 @@ def FSRsahamag_hom(z, vect, k, theta, Bin, xesaha_full, xesaha_full_He):
     delta2Theta = 1
 
     Theta2delta = (k**2/ H(z)**2)*(
-    (4.0*np.pi*cons.G*rhob0 * (1+z)/(k**2) ) - ((1.0 + fhe + xesaha_full_He(z)) - xesaha_full(z)*(1.0 - xesaha_full(z))/(2.0 - xesaha_full(z)))*(1.0 - cons.yhe)*(
+    (GRAVITY*4.0*np.pi*cons.G*rhob0 * (1+z)/(k**2) ) - ((1.0 + fhe + xesaha_full_He(z)) - xesaha_full(z)*(1.0 - xesaha_full(z))/(2.0 - xesaha_full(z)))*(1.0 - cons.yhe)*(
         cons.kb* Tcmb(z)/cons.mh) )
     Theta2Theta =  - ( Hprime(z)/ H(z) ) + (  H(z) +  f_lambda(z)*(1.0 - cons.yhe)*xesaha_full_He(z) ) / ( H(z)*(1+z) )
     Theta2b = - (cons.c**2 * k**2 * B0**2 * np.sin(theta) ) / (  H(z)**2 *  R(z)  )
@@ -499,7 +569,7 @@ def FSRTLAmag(z, vect, k, kind, theta, Bin, xe_full, xe_full_He, abarinterp, bba
     delta2Theta =  1
 
     # He-inclusive: homogeneous pressure particle count (He electrons are real particles)
-    Theta2delta = (4*np.pi*cons.G * rhob0 * (1+z) - ((xh * (1 + fhe + xe_full_He(z)) )*(
+    Theta2delta = (GRAVITY*4*np.pi*cons.G * rhob0 * (1+z) - ((xh * (1 + fhe + xe_full_He(z)) )*(
         cons.kb* Tcmb(z)/cons.mh ) * k**2 ) )*(1/ H(z))**2
     # He-inclusive: Thomson drag (drag ~ total n_e)
     Theta2Theta = - ( Hprime(z)/ H(z) ) + ( H(z) +  f_lambda(z)*(1.0 - cons.yhe)*xe_full_He(z) ) / ( H(z) * (1+z) )
@@ -591,6 +661,16 @@ def FSRTLAmag_Tb(z, vect, k, kind, theta, Bin, xe_full, xe_full_He, abarinterp, 
         a=4.309; b=-0.6166; c=0.6703; d=0.53
         return (b + (b-d)*c*(Tbhom(z)/10**4)**d )/(1 + c*(Tbhom(z)/10**4)**d)
 
+    # Third audit, finding 4 (PREREG addenda 12 and 16): the pressure coefficient uses the homogeneous T_b, and so does
+    # the alpha_B prefactor of the delta alpha_B response term (dxe2Tb). The background-balance coefficients (dxe2delta,
+    # dxe2dxe) keep alpha_B(T_gamma), the value the background x_e and f_eq are solved with: their recombination and
+    # photoionisation parts cancel to 1 part in ~500 at z ~ 1400, so a 1e-6 offset of alpha_B would be amplified into a
+    # spurious ~5e-4 change. PMHD_TB_COEFF_TG=1 restores T_gamma everywhere.
+    if os.environ.get("PMHD_TB_COEFF_TG", "0") != "0":
+        Tcoef = Tcmb(z); alphab_c = alphab(z)
+    else:
+        Tcoef = Tbhom(z); alphab_c = alphabT(Tbhom(z))
+
     # Compton heating: He-inclusive free electrons couple the gas to photons
     def Gammac(z):
         return 8*cons.arad*Tcmb(z)**4*xe_full_He(z)*cons.sigmat/( 3*cons.me*(1+xe_full_He(z) + fhe) )/cons.c
@@ -600,14 +680,14 @@ def FSRTLAmag_Tb(z, vect, k, kind, theta, Bin, xe_full, xe_full_He, abarinterp, 
     delta2Theta =  1
 
     # He-inclusive: homogeneous pressure particle count
-    Theta2delta = (4*np.pi*cons.G * rhob0 * (1+z) - ((xh * (1 + fhe + xe_full_He(z)) )*(
-        cons.kb* Tcmb(z)/cons.mh ) * k**2 ) )*(1/ H(z))**2
+    Theta2delta = (GRAVITY*4*np.pi*cons.G * rhob0 * (1+z) - ((xh * (1 + fhe + xe_full_He(z)) )*(
+        cons.kb* Tcoef/cons.mh ) * k**2 ) )*(1/ H(z))**2
     Theta2Tb = (- ((xh * (1 + fhe + xe_full_He(z)) )*(
-        cons.kb* Tcmb(z)/cons.mh ) * k**2 ) )*(1/ H(z))**2
+        cons.kb* Tcoef/cons.mh ) * k**2 ) )*(1/ H(z))**2
     # He-inclusive: Thomson drag
     Theta2Theta = - ( Hprime(z)/ H(z) ) + ( H(z) +  f_lambda(z)*(1.0 - cons.yhe)*xe_full_He(z) ) / ( H(z) * (1+z) )
     Theta2b = - (cons.c**2 * k**2 * B0**2 * np.sin(theta) ) / (  H(z)**2 *  R(z)  )
-    Theta2dxe = -(k**2/ H(z)**2)* xh * (cons.kb* Tcmb(z)/cons.mh)
+    Theta2dxe = -(k**2/ H(z)**2)* xh * (cons.kb* Tcoef/cons.mh)
 
     Phiy2Phiy = - ( Hprime(z)/ H(z) ) + ( H(z) +  f_lambda(z)*(1.0 - cons.yhe)*xe_full_He(z) ) / ( H(z) * (1+z) )
     Phiy2b = (k**2/ H(z)**2)* (cons.c**2 * B0**2 * np.cos(theta) ) / ( R(z)  )
@@ -627,7 +707,7 @@ def FSRTLAmag_Tb(z, vect, k, kind, theta, Bin, xe_full, xe_full_He, abarinterp, 
                4* feq(z,xe_full)* betab(z)
                + sigA(kind,z)
               )/( H(z)*(1+z))
-    dxe2Tb = (P3LA(kind,z)* nh(z)*xe_full(z)**2*alphab(z)/( H(z)*(1+z)) ) * dalphabpref(z)
+    dxe2Tb = (P3LA(kind,z)* nh(z)*xe_full(z)**2*alphab_c/( H(z)*(1+z)) ) * dalphabpref(z)
 
     Tb2Tb =  Gammac(z)*(Tcmb(z)/Tbhom(z))/(H(z)*(1+z))
     Tb2Theta = (2/3)

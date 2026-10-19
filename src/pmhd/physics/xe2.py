@@ -23,6 +23,8 @@ import pickle
 import argparse
 
 from pmhd import cons, pars
+from pmhd.data.tables import tables_dir
+from pmhd.physics.source_assembly import solve_x1squad
 from pmhd.data.grids import (
     k_grid, z_grid, eps_grid,
     load_or_generate_B0arr,
@@ -50,7 +52,7 @@ def main(input_bind, input_epsind):
     abar2 = np.zeros((len(zarr)))
     cbar2 = np.zeros((len(zarr)))
     for zind in range(len(zarr)):
-        with open(PROJECT_ROOT/f'src/pmhd/data/pre_stored_data/f2bars_dict/f2bars_m0_dict_zch_{zind}.pkl', 'rb') as f:
+        with open(tables_dir()/f'f2bars_dict/f2bars_m0_dict_zch_{zind}.pkl', 'rb') as f:
             f2bars_m0_master = pickle.load(f)  
         abar2[zind] = f2bars_m0_master[f'df/dnu'][0,0]
         cbar2[zind] = f2bars_m0_master[f'taus_phi'][0,0]
@@ -127,8 +129,9 @@ def main(input_bind, input_epsind):
     _tck_sbar2         = splrep(np.flip(zarr), np.flip(sbar2))
     _tck_cbar2         = splrep(np.flip(zarr), np.flip(cbar2))
 
-    ## Solve ODE for x1s^{(2)}
-    hold = solve_ivp(x1squad, [1900,600], [1e-20], args = (input_epsind,Lambda,abar2,sbar2,cbar2,cont), method = 'LSODA', dense_output=True, atol=1e-9, rtol = 1e-6 )
+    ## Solve ODE for x1s^{(2)} -- shared with the single-mode path via source_assembly
+    hold = solve_x1squad(zarr, cross_corr, sbar2, abar2, cbar2, cont, xe_full,
+                         zspan=(1900, 600))
     ## Create \Delta x_e from solution
     xe2 = ( abs(epsarr[input_epsind])/4 ) * (Lambda/(2*np.pi) )**((epsarr[input_epsind]))* (-hold.sol(zarr) + cross_corr['deltamxecross'])
 

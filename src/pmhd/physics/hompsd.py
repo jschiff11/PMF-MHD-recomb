@@ -5,7 +5,7 @@ import numpy as np
 lib_path = os.path.abspath('')
 sys.path.append(lib_path)
 
-from astropy import constants as const
+from astropy.constants import codata2018 as const   # pinned to the set of cons.py (CODATA_SET)
 from astropy.cosmology import Planck18 as cosmo
 
 from pmhd import cons, pars
@@ -23,9 +23,12 @@ def psdHR(x_array,z_array,zind,taus,pab,feq):
     
     voigtmids = (voigt[:-1] + voigt[1:]) /2
     
-    fbb = pars.fbb(1000 , z_array, zind);  
+    # Blue-side boundary: the quasi-steady equation carries the far-wing constant into the line, so the consistent value
+    # is the blackbody at line centre, f_bb = e^{-h nu_a/kT} (manuscript Eq. B3 and the 2s rate of Eq. 23). Until
+    # 2026-10-12 the Planck value 1000 Doppler widths blueward was used (0.4-0.5x line centre; PMHD_HOMPSD_BB_CENTER=0).
+    fbb = pars.fbb(0.0 if os.environ.get('PMHD_HOMPSD_BB_CENTER', '1') != '0' else 1000, z_array, zind)
     
-    dx = 0.02 # step size for integration
+    dx = (x_array[-1] - x_array[0])/(len(x_array) - 1)   # grid spacing (0.02 at the default 100001 points; was hard-coded)
     
     # Initialize matrix bands
     MHRjp1 = np.zeros(len(x_array))

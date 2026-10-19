@@ -37,6 +37,7 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import splrep, splev, splint
 from scipy.interpolate import RegularGridInterpolator
 from scipy.ndimage import gaussian_filter
+from scipy.optimize import brentq
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
@@ -119,7 +120,9 @@ thetaarr_full = np.linspace(0, np.pi, 33)
 epstest = [0, 2, 4, 6, 8, 9]  # epsarr indices for Figure 07: [0,2,4,6,8] for the right panel, 9 (eps=-0.1) for the left
 kLamb = 2 * np.pi / Lambda
 
-FIG07_CACHE_DIR = REPO_ROOT / "analysis" / ".fig07_local3la_cache"
+# PMHD_CACHEDIR relocates the cache so a run on a different data set (e.g. PMHD_OUTDIR=data_doppler)
+# does not pick up curves cached from another one; default unchanged.
+FIG07_CACHE_DIR = Path(os.environ.get("PMHD_CACHEDIR", str(REPO_ROOT / "analysis"))) / ".fig07_local3la_cache"
 _fig07_cache_path = FIG07_CACHE_DIR / "fullavg.npz"
 
 print("computing local perturbed-3LA curves for Figure 07 ...", time.ctime())
@@ -164,7 +167,7 @@ else:
     xeplus = np.zeros((NK_LOC, len(bindarr_loc), NTHETA, len(zarr)))
     xeminus = np.zeros((NK_LOC, len(bindarr_loc), NTHETA, len(zarr)))
     _tasks = [(k, b, t) for k in range(NK_LOC) for b in range(len(bindarr_loc)) for t in range(NTHETA)]
-    with _mp.get_context("fork").Pool(processes=min(len(_tasks), _os.cpu_count() or 1)) as _pool:
+    with _mp.get_context("fork").Pool(processes=min(len(_tasks), len(_os.sched_getaffinity(0)) or 1)) as _pool:
         for kind, bcount, thetaind, xp, xm in _pool.imap_unordered(_solve_local_pair, _tasks, chunksize=8):
             xeplus[kind, bcount, thetaind] = xp
             xeminus[kind, bcount, thetaind] = xm
@@ -188,7 +191,10 @@ else:
     xefullhold = ((1 + eps_mod * deltafull) * xeplusfull + (1 - eps_mod * deltafull) * xeminusfull
                   - 2 * np.broadcast_to(xe_full(zarr).reshape(1, 1, 1, len(zarr)),
                                         (NK_LOC, len(bindarr_loc), 33, len(zarr))))
-    xefullhold[:, :, 16, :] = 0
+    if _os.environ.get('PMHD_LOCAL_PI2_ZERO', '0') != '0':   # pre-2026-10-12 behaviour: the theta = pi/2 node was zeroed
+        xefullhold[:, :, 16, :] = 0
+    print('local-3LA theta=pi/2 node: finite =', bool(np.all(np.isfinite(xefullhold[:, :, 16, :]))),
+          ' max|.| =', float(np.nanmax(np.abs(xefullhold[:, :, 16, :]))), ' vs max over all theta =', float(np.nanmax(np.abs(xefullhold))))
 
     print("angle- and wavenumber-averaging the local-3LA shift ...", time.ctime())
     fullbar = np.zeros((NK_LOC, len(bindarr_loc), len(zarr)))
@@ -256,10 +262,20 @@ print("saved 07_xe2_curves.png")
 # ---------------------------------------------------------------------------
 # Figure 08: min(xe2) heatmap vs (B0, eps)
 # ---------------------------------------------------------------------------
-xe2_min = np.min(xe2fullk, axis=0)
-interp_func = RegularGridInterpolator((1e12 * B0arr, epsarr), xe2_min)
+# Figs 08-11 use the computed domain only, all 61 fields x NEPS tilts (PREREG addendum 17, item 2): the tilt columns
+# beyond NEPS are not computed and must not enter an interpolant or a smoothing kernel as zeros.
+EPSC = epsarr[:NEPS]
+XLIM, YLIM = [EPSC[0], EPSC[-1]], [1e12 * B0arr[0], 1e12 * B0arr[-1]]
+def check_nodes(interp, values, name):   # the interpolant must reproduce the computed values at every node
+    nodes = np.array([(1e12 * b, e) for b in B0arr for e in EPSC])
+    err = np.max(np.abs(interp(nodes).reshape(values.shape) - values))
+    assert err <= 1e-12 * max(1.0, np.max(np.abs(values))), f"{name}: interpolant misses the nodes by {err}"
+    print(f"{name}: interpolant reproduces the {values.size} computed nodes (max deviation {err:.1e})")
+xe2_min = np.min(xe2fullk[:, :, :NEPS], axis=0)
+interp_func = RegularGridInterpolator((1e12 * B0arr, EPSC), xe2_min)
+check_nodes(interp_func, xe2_min, "Fig 08")
 num_points = 1000
-epsarr_dense = np.linspace(epsarr[0], epsarr[-1], num_points)
+epsarr_dense = np.linspace(EPSC[0], EPSC[-1], num_points)
 B0arr_dense = 1e12 * np.linspace(B0arr[0], B0arr[-1], num_points)
 B0_grid, eps_grid = np.meshgrid(B0arr_dense, epsarr_dense, indexing='ij')
 pts = np.array([B0_grid.flatten(), eps_grid.flatten()]).T
@@ -272,8 +288,8 @@ cbar = plt.colorbar(cmap, ax=ax)
 cbar.set_label(r'min($\delta x_e^{(2)}$)')
 ax.set_xlabel(r'$\epsilon$')
 ax.set_ylabel(r'$B_0 \, (\mathrm{pG})$')
-ax.set_xlim([epsarr[0], epsarr[EPSINDMAX]])
-ax.set_ylim([1e12 * B0arr[0], 1e12 * B0arr[BINDMAX - 1]])
+ax.set_xlim(XLIM)
+ax.set_ylim(YLIM)
 plt.tight_layout()
 plt.savefig(PLOTDIR / "08_min_xe2_heatmap.png", dpi=150)
 plt.close(fig)
@@ -317,7 +333,7 @@ def _tau0_visib_one(zind):
 
 visibarr = np.zeros(len(zarr))
 tau0arr = np.zeros(len(zarr))
-_nworkers = min(len(zarr), _os.cpu_count() or 1)
+_nworkers = min(len(zarr), len(_os.sched_getaffinity(0)) or 1)
 with _fork_ctx.Pool(processes=_nworkers) as _pool:
     for zind, t0, v in _pool.imap_unordered(_tau0_visib_one, range(len(zarr)), chunksize=8):
         tau0arr[zind] = t0
@@ -332,17 +348,28 @@ for bind in range(len(B0arr)):
 
 zstartind = 0
 zarrfine = np.linspace(600, zarr[zstartind], 100000)
-peakarr = np.zeros((len(B0arr), len(epsarr)))
-relshift = np.zeros((len(B0arr), len(epsarr)))
+
+
+def refined_peak(g_on_zarr):
+    """Peak redshift of a visibility history: the zero of the derivative of its cubic spline (all 1300 redshifts),
+    bracketed around the maximum on the fine grid. Used identically for the no-field and the perturbed visibility,
+    so a zero perturbation gives a zero shift (PREREG addendum 17, item 1)."""
+    tck = splrep(zarr[::-1], g_on_zarr[::-1])
+    i = int(np.argmax(splev(zarrfine, tck)))
+    lo, hi = zarrfine[max(i - 1, 0)], zarrfine[min(i + 1, len(zarrfine) - 1)]
+    return brentq(lambda zz: splev(zz, tck, der=1), lo, hi, xtol=1e-12)
+
+
+no_field_peak_z = refined_peak(visibarr)
+assert refined_peak(1.0 * visibarr) - no_field_peak_z == 0.0, "zero perturbation must give zero shift"
+peakarr = np.full((len(B0arr), NEPS), np.nan)
 for bind in range(len(B0arr)):
     for epsind in range(NEPS):
-        peakarr[bind, epsind] = zarrfine[np.argmax(splev(zarrfine, splrep(zarr[:zstartind:-1],
-                                          visibprefactor[:zstartind:-1, bind, epsind] * visibarr[:zstartind:-1])))]
-
-no_field_peak_z = zarrfine[np.argmax(splev(zarrfine, splrep(zarr[::-1], visibarr[::-1])))]
-relshift[:BINDMAX, :EPSINDMAX] = peakarr[:BINDMAX, :EPSINDMAX] - no_field_peak_z
-relshift_smoothed = gaussian_filter(relshift, sigma=1.1)
-interp_func2 = RegularGridInterpolator((1e12 * B0arr, epsarr), relshift_smoothed)
+        peakarr[bind, epsind] = refined_peak(visibprefactor[:, bind, epsind] * visibarr)
+relshift = peakarr - no_field_peak_z
+print(f"no-field visibility peak z = {no_field_peak_z:.6f}; Delta z* range {relshift.min():.6f} ... {relshift.max():.6f}")
+interp_func2 = RegularGridInterpolator((1e12 * B0arr, EPSC), relshift)    # no smoothing: the refined peaks have no grid steps
+check_nodes(interp_func2, relshift, "Fig 09")
 relshift_interp_2d = interp_func2(pts).reshape(num_points, num_points)
 
 fig, ax = plt.subplots(figsize=(8, 6))
@@ -352,6 +379,8 @@ cbar = plt.colorbar(cmap, ax=ax)
 cbar.set_label(r'$\Delta z_*$')
 ax.set_xlabel(r'$\epsilon$')
 ax.set_ylabel(r'$B_0 \, (\mathrm{pG})$')
+ax.set_xlim(XLIM)
+ax.set_ylim(YLIM)
 plt.tight_layout()
 plt.savefig(PLOTDIR / "09_visibility_shift_heatmap.png", dpi=150)
 plt.close(fig)
@@ -369,7 +398,8 @@ for bind in range(len(B0arr)):
         deltamrms[:, bind, epsind] = abs(epsarr[epsind]) / 4 * (Lambda / (2 * np.pi))**epsarr[epsind] * cc["deltamrms"]
 
 zind_1295 = int(np.argmin(np.abs(zarr - 1295)))
-interp_func3 = RegularGridInterpolator((1e12 * B0arr, epsarr), deltamrms[zind_1295])
+interp_func3 = RegularGridInterpolator((1e12 * B0arr, EPSC), deltamrms[zind_1295][:, :NEPS])
+check_nodes(interp_func3, deltamrms[zind_1295][:, :NEPS], "Fig 10")
 dmrms_interp_2d = interp_func3(pts).reshape(num_points, num_points)
 
 fig, ax = plt.subplots(figsize=(8, 6))
@@ -379,8 +409,8 @@ cbar = plt.colorbar(cmap, ax=ax)
 cbar.set_label(r'Clumping factor b at $z = 1295$')
 ax.set_xlabel(r'$\epsilon$')
 ax.set_ylabel(r'$B_0 \, (\mathrm{pG})$')
-ax.set_xlim([epsarr[0], epsarr[EPSINDMAX]])
-ax.set_ylim([1e12 * B0arr[0], 1e12 * B0arr[BINDMAX]])
+ax.set_xlim(XLIM)
+ax.set_ylim(YLIM)
 plt.tight_layout()
 plt.savefig(PLOTDIR / "10_clumping_heatmap.png", dpi=150)
 plt.close(fig)
@@ -389,7 +419,7 @@ print("saved 10_clumping_heatmap.png")
 fig, axs = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
 im = axs[0].imshow(dmrms_interp_2d, origin='lower', aspect='auto',
                    extent=[epsarr_dense[0], epsarr_dense[-1], B0arr_dense[0], B0arr_dense[-1]], cmap='twilight')
-im1 = axs[1].imshow(relshift_interp_2d, origin='lower', aspect='auto', vmin=0, vmax=0.72,
+im1 = axs[1].imshow(relshift_interp_2d, origin='lower', aspect='auto', vmin=0, vmax=0.75,   # same scale as Fig 09 (grid maximum 0.744)
                     extent=[epsarr_dense[0], epsarr_dense[-1], B0arr_dense[0], B0arr_dense[-1]], cmap='twilight')
 cbar = plt.colorbar(im, ax=axs[0])
 cbar.set_label('Clumping factor b $= \\langle \\delta_b^2 \\rangle$ at $z=1295$', fontsize=12, rotation=270, labelpad=20)
@@ -400,8 +430,8 @@ cbar.ax.tick_params(size=12, labelsize=12)
 
 axs[0].set_xlabel(r'$\epsilon$', fontsize=16); axs[0].set_ylabel(r'$B_0 \, (\mathrm{pG})$', fontsize=16)
 axs[1].set_xlabel(r'$\epsilon$', fontsize=16)
-axs[0].set_xlim([epsarr[0], epsarr[EPSINDMAX - 1]]); axs[0].set_ylim([1e12 * B0arr[0], 1e12 * B0arr[BINDMAX - 1]])
-axs[1].set_xlim([epsarr[0], epsarr[EPSINDMAX - 1]]); axs[1].set_ylim([1e12 * B0arr[0], 1e12 * B0arr[BINDMAX - 1]])
+axs[0].set_xlim(XLIM); axs[0].set_ylim(YLIM)
+axs[1].set_xlim(XLIM); axs[1].set_ylim(YLIM)
 axs[0].tick_params(size=12, labelsize=12, labelbottom=True)
 axs[1].tick_params(size=12, labelsize=12, labelbottom=True)
 
@@ -410,4 +440,8 @@ plt.savefig(PLOTDIR / "11_clumping_and_visibility_side_by_side.png", dpi=150)
 plt.close(fig)
 print("saved 11_clumping_and_visibility_side_by_side.png")
 
+# the arrays behind Figures 08-11, for data-set comparisons (e.g. with/without the Doppler terms)
+np.savez(PLOTDIR / "plotted_arrays_08_11.npz", xe2_min=xe2_min, peakarr=peakarr, relshift=relshift,
+         no_field_peak_z=no_field_peak_z, visibarr=visibarr, visibprefactor=visibprefactor[:, :, :NEPS], zstartind=zstartind,
+         deltamrms_1295=deltamrms[zind_1295][:, :NEPS], B0arr=B0arr, epsarr=EPSC)
 print("all xe2/visibility plots done;", time.ctime())

@@ -22,25 +22,35 @@ Several inputs appear below only as array indices; the resolved values are:
   redshift          zind 800 of z_grid(1900, 600, -1)  ->  z = 1100
                     (the solver spans zind 800->802, i.e. z = 1100-1099; the
                     plotted row is moments[0, ...] = z = 1100)
-  multipole cutoff  nm = 30, hierarchy truncated at l = nm - 1 = 29
+  multipole cutoff  nm = 15, hierarchy closed at l = nm - 1 = 14 (NM_PM1 below)
   frequency grid    x = (nu - nu_Lya)/(nu_Lya * Delta_H) in [-1000, +1000]
                     Doppler widths, steps = 100001, dx = 0.02;
                     plotted over x in [-200, 200]
-  boundary cond.    simple truncation (cutoff B.C. on the advection term at
-                    j = nm-1). The m = +/-1 hierarchies do NOT use the
-                    non-reflecting condition of the m = 0 solver fullz().
+  boundary cond.    non-reflecting closure at l = nm-1 (fullzp1/fullzm1 default
+                    closure=True): the l_max diagonal gets
+                    -dx*|tvsh|*alpha_(L,1), alpha_(L,1) = sqrt((L^2-1)/(4L^2-1)),
+                    the same closure as the production moment tables.
+  Doppler source    the D' bases include the first-order Doppler rate-factor
+                    l=1 source, +1/2 (m=+1) and +1/6 (m=-1) times
+                    (aH/ck) df/dx (fullzp1/fullzm1 default doppler=True).
+                    At this k, aH/ck ~ 5e-8, so it is invisible in the figure.
   cosmology         astropy Planck18, via pmhd.cons / pars.H(z):
                     H0 = 2.192711e-18 s^-1, Omega_m = 0.309660,
                     Omega_Lambda = 0.688846, N_eff = 3.046, T0 = 2.7255 K,
                     Y_p = 0.2454, Omega_b h^2 = 0.022418
-  plotted curves    l=1 is p1moms[0, 1::30, 0], l=2 is p1moms[0, 2::30, 0].
-                    The ::30 stride is the nm interleaving of the moment
+  plotted curves    l=1 is p1moms[0, 1::15, 0], l=2 is p1moms[0, 2::15, 0].
+                    The ::15 stride is the nm interleaving of the moment
                     hierarchy; the trailing index 0 selects the FIRST of the
                     three basis solutions returned by fullzp1/fullzm1.
 
 The basis-solution index and the multipole normalization convention are the
 two places where an independent implementation is most likely to pick up an
 overall amplitude offset while reproducing the curve shape correctly.
+
+The published Figure 18 (paper_data_plots/plots/18_lyman_alpha_moments.png, made
+before 2026-09) used nm = 30 with simple truncation (closure=False) and no Doppler
+source (doppler=False), i.e. a ::30 stride. The NRBC at l_max = 14 changes the
+curves by <= 0.8% of their peak at this k.
 
 Configuration (environment variables):
   PMHD_PLOTDIR : directory to write figures to (default: <repo>/analysis/plots)
@@ -99,14 +109,18 @@ for zind in (800, 801):
 
 print("computing Lyman-alpha moments ...", time.ctime())
 
-p1moms = inhomomom.fullzp1(zarr, 800, 802, karr[3], xe_full, 30, steps, psd)
-m1moms = inhomomom.fullzm1(zarr, 800, 802, karr[3], xe_full, 30, steps, psd)
+# Non-reflecting closure at ell_max = 14 (nm = 15), as in the production moment tables since 2026-09;
+# the D' bases include the first-order Doppler rate-factor ell=1 source (Eq. 414).  The published
+# figure used hard truncation at ell_max = 29 (nm = 30) without the Doppler source.
+NM_PM1 = 15
+p1moms = inhomomom.fullzp1(zarr, 800, 802, karr[3], xe_full, NM_PM1, steps, psd)
+m1moms = inhomomom.fullzm1(zarr, 800, 802, karr[3], xe_full, NM_PM1, steps, psd)
 
 fig, axs = plt.subplots(1, 2, figsize=(16, 6), sharey=True, sharex=True)
-axs[0].plot(output_xs, p1moms[0, 1::30, 0], 'k-', label=r'$\ell=1$')
-axs[0].plot(output_xs, p1moms[0, 2::30, 0], 'k:', label=r'$\ell=2$')
-axs[1].plot(output_xs, m1moms[0, 1::30, 0], 'k-', label=r'$\ell=1$')
-axs[1].plot(output_xs, m1moms[0, 2::30, 0], 'k:', label=r'$\ell=2$')
+axs[0].plot(output_xs, p1moms[0, 1::NM_PM1, 0], 'k-', label=r'$\ell=1$')
+axs[0].plot(output_xs, p1moms[0, 2::NM_PM1, 0], 'k:', label=r'$\ell=2$')
+axs[1].plot(output_xs, m1moms[0, 1::NM_PM1, 0], 'k-', label=r'$\ell=1$')
+axs[1].plot(output_xs, m1moms[0, 2::NM_PM1, 0], 'k:', label=r'$\ell=2$')
 axs[0].legend(fontsize=16)
 axs[0].set_xlim([-200, 200])
 axs[0].set_ylabel(r'$\mathcal{D}_{\ell}^+$', fontsize=16)

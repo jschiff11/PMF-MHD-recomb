@@ -92,8 +92,41 @@ def boltfullk2(zval,karr,sourcearr,sourcenum,xe_total,steps):
 
     return moments, fbar
 
-def fullk(zval,karr,xe_total,nm,steps,psd_h):
-    
+def nrbc_alpha(ell, m):
+    r"""Matrix element of \mu between orthonormal harmonics, alpha_{ell m} = sqrt((ell^2-m^2)/(4 ell^2-1)).
+
+    The non-reflecting (absorbing) closure adds ``-dx*|tvsh|*nrbc_alpha(nm-1, m)`` to the diagonal of
+    the ell_max = nm-1 equation.  It matches the outgoing free-streaming energy flux of a mode that is
+    smooth in ell, up to O(m^2/ell_max^3).  A diagonal term is invariant under the ell-dependent
+    rescaling between the signed-m P_ell^m basis and the orthonormal basis, so the same coefficient is
+    correct for the m=+1 and m=-1 towers.  For m=0 it reduces to ell/sqrt(4 ell^2-1), the closure
+    that ``fullk`` has always used.
+    """
+    return np.sqrt((ell*ell - m*m)/(4.0*ell*ell - 1.0))
+
+
+def doppler_aHck(zval, k):
+    r"""aH/(ck) for comoving k in cm^-1 (the k_grid() units).
+
+    The collision term is a rate per unit matter-rest-frame time, so the first-order BE carries the
+    Doppler factor D = gamma(1 - v.n_N/c).  Its D^(1) C^(0) piece is an ell=1 source proportional to
+    Theta/(ck) (or Phi_pm/(ck)).  Measured in units of the existing velocity-gradient/shear sources
+    (per Theta/aH, per Phi_pm/aH), its coefficient is aH/(ck).  It is absorbed into the B and D^pm
+    bases (Eq. 414 of the notes).
+    """
+    return pars.H(zval)/((1.0 + zval)*cons.c*k)
+
+
+def fullk(zval,karr,xe_total,nm,steps,psd_h,doppler=True):
+    """
+    m=0 moments for all k at one redshift (production solver; k in cm^-1).
+
+    A non-reflecting closure is always applied at ell_max = nm-1.
+    doppler : if True, add the first-order Doppler rate-factor source -(aH/ck) df/dx at ell=1 to the
+              Theta basis (column 1), i.e. solve for B' instead of B.  doppler=False reproduces the
+              pre-Doppler tables bit-for-bit.
+    """
+
     #--------------------------------------------------------------------------
     # Define a few background parameters
     #--------------------------------------------------------------------------
@@ -166,11 +199,18 @@ def fullk(zval,karr,xe_total,nm,steps,psd_h):
     # source from 2p population and monopole, note sign change
     b_i[nm:-nm:nm,2] += -tauS*voigt_output_xs[1:-1]*source[2]*dx
     
+    if doppler:
+        dfdx_dop = splev( output_xs[:-1], psd_h, der=1 )*dx
+        aHck = doppler_aHck(zval, np.asarray(karr))
+
     coeffs_base = coeffs_i.copy()
     moments = np.zeros( ( len(karr), nm*len(output_xs), 3 ) )
     fbar = np.zeros( (len(karr),3))
     for kind in range(len(karr)):
         coeffs_i = coeffs_base.copy()
+        if doppler:
+            # k-dependent ell=1 Doppler source, ASSIGNED (not accumulated) for each k
+            b_i[1:-nm:nm,1] = -aHck[kind]*dfdx_dop
         # list of parameters governing strength of advection, c*k*Delta/H*a
         tvsh = (
                 ( cons.c*delta*(1.0 + zval) / ( pars.H(zval) ) )
@@ -203,7 +243,18 @@ def fullk(zval,karr,xe_total,nm,steps,psd_h):
 
     return moments, fphi, fbar
 
-def fullkp1(zval,karr,xe_total,nm,steps,psd_h):
+def fullkp1(zval,karr,xe_total,nm,steps,psd_h,closure=True,doppler=True):
+    """
+    m=+1 moments for all k at one redshift (production solver; k in cm^-1).
+
+    Source: -1/6 df/dx at ell=2 (vorticity/shear basis D; code normalisation, identical for m=+-1).
+    closure : non-reflecting closure at ell_max = nm-1 (diagonal -dx*|tvsh|*nrbc_alpha(nm-1,1)).
+              The coefficient array persists across the k loop, so the ell_max diagonal is SET to
+              base + closure for every k (a bare '+=' would accumulate over k).
+              closure=False is the original hard truncation.
+    doppler : add the first-order Doppler rate-factor source +1/2 (aH/ck) df/dx at ell=1 (code
+              normalisation; solves for D' of Eq. 414).  doppler=False reproduces the old tables.
+    """
     #--------------------------------------------------------------------------
     # Define a few background parameters
     #--------------------------------------------------------------------------
@@ -256,6 +307,11 @@ def fullkp1(zval,karr,xe_total,nm,steps,psd_h):
     # source from rotational velocity
     b_i[2:-nm:nm,0] += splev( output_xs[:-1], psd_h, der=1 )*(-source[0]/6)*dx
     
+    diagL_base = coeffs_i[nm, nm-1:-nm:nm].copy()
+    alphaL = nrbc_alpha(nm-1.0, 1.0)
+    if doppler:
+        dfdx_dop = splev( output_xs[:-1], psd_h, der=1 )*dx
+        aHck = doppler_aHck(zval, np.asarray(karr))
     moments = np.zeros( ( len(karr), nm*len(output_xs), 1 ) )
     for kind in range(len(karr)):
         # list of parameters governing strength of advection, c*k*Delta/H*a
@@ -269,11 +325,26 @@ def fullkp1(zval,karr,xe_total,nm,steps,psd_h):
         # advection term for j=nm-1, with cutoff BCs
         coeffs_i[nm+1,nm-2:-nm:nm] = (dx*tvsh*(nm-2.0)/(2.0*nm-3.0))
     
+        if closure:
+            coeffs_i[nm, nm-1:-nm:nm] = diagL_base - dx*np.abs(tvsh)*alphaL
+        if doppler:
+            b_i[1:-nm:nm,0] = (0.5)*aHck[kind]*dfdx_dop
         moments[kind] = sb( (1,nm), coeffs_i, b_i )
 
     return moments
 
-def fullkm1(zval,karr,xe_total,nm,steps,psd_h):
+def fullkm1(zval,karr,xe_total,nm,steps,psd_h,closure=True,doppler=True):
+    """
+    m=-1 moments for all k at one redshift (production solver; k in cm^-1).
+
+    Source: -1/6 df/dx at ell=2 (vorticity/shear basis D; code normalisation, identical for m=+-1).
+    closure : non-reflecting closure at ell_max = nm-1 (diagonal -dx*|tvsh|*nrbc_alpha(nm-1,1)).
+              The coefficient array persists across the k loop, so the ell_max diagonal is SET to
+              base + closure for every k (a bare '+=' would accumulate over k).
+              closure=False is the original hard truncation.
+    doppler : add the first-order Doppler rate-factor source +1/6 (aH/ck) df/dx at ell=1 (code
+              normalisation; solves for D' of Eq. 414).  doppler=False reproduces the old tables.
+    """
     #--------------------------------------------------------------------------
     # Define a few background parameters
     #--------------------------------------------------------------------------
@@ -326,6 +397,11 @@ def fullkm1(zval,karr,xe_total,nm,steps,psd_h):
     # source from rotational velocity
     b_i[2:-nm:nm,0] += splev( output_xs[:-1], psd_h, der=1 )*(-source[0]/6)*dx
     
+    diagL_base = coeffs_i[nm, nm-1:-nm:nm].copy()
+    alphaL = nrbc_alpha(nm-1.0, 1.0)
+    if doppler:
+        dfdx_dop = splev( output_xs[:-1], psd_h, der=1 )*dx
+        aHck = doppler_aHck(zval, np.asarray(karr))
     moments = np.zeros( ( len(karr), nm*len(output_xs), 1 ) )
     for kind in range(len(karr)):
         # list of parameters governing strength of advection, c*k*Delta/H*a
@@ -339,6 +415,10 @@ def fullkm1(zval,karr,xe_total,nm,steps,psd_h):
         # advection term for j=nm-1, with cutoff BCs
         coeffs_i[nm+1,nm-2:-nm:nm] = (dx*tvsh*(nm)/(2.0*nm-3.0))
     
+        if closure:
+            coeffs_i[nm, nm-1:-nm:nm] = diagL_base - dx*np.abs(tvsh)*alphaL
+        if doppler:
+            b_i[1:-nm:nm,0] = (1.0/6.0)*aHck[kind]*dfdx_dop
         moments[kind] = sb( (1,nm), coeffs_i, b_i )
 
     return moments
@@ -438,7 +518,7 @@ def boltz2fullz(z_arr,zin,zfin,sourcearr,sourcenum,xe_total,steps):
 
     return moments, fbar
 
-def fullz(z_arr,zin,zfin,k,xe_total,nm,steps,psd):
+def fullz(z_arr,zin,zfin,k,xe_total,nm,steps,psd,doppler=True):
     """
     Computes all moments of the scalar (m=0) perturbed boltzmann equation with Non-reflecting boundary conditions using finite difference methods. 
     Sovler goes out to \pm 1000 doppler widths from the line center.
@@ -451,7 +531,9 @@ def fullz(z_arr,zin,zfin,k,xe_total,nm,steps,psd):
     zin : initial index for z_arr over which you wish to solve boltzmann equation 
     zfin : final index for z_arr over which you wish to solve boltzmann equation 
         
-    k : the wavenumber for which you are solving the boltzmann equation 
+    k : the wavenumber in cm^-1 (k_grid() units).  NOTE: until 2026-09 this solver divided by cons.mpc a
+        second time, i.e. it expected Mpc^-1 and silently suppressed free streaming for cm^-1 input.
+        No production output depended on it; it now uses cm^-1 like fullk/fullzp1/fullzm1.
     
     xe_total : the free ionizaiton fraction. It is an array that must be defined over all redshifts in z_arr.  
     
@@ -500,7 +582,7 @@ def fullz(z_arr,zin,zfin,k,xe_total,nm,steps,psd):
 
     # list of parameters governing strength of advection, c*k*Delta/H*a
     tvsh = ( 
-            ( cons.c*delta*(1.0 + z_total) / ( pars.H(z_total)*cons.mpc ) )
+            ( cons.c*delta*(1.0 + z_total) / ( pars.H(z_total) ) )   # k in cm^-1, like every other solver
             * k ) # z by k
     # nm = 9 # number of moments followed in the Boltzmann equation, nm > 1 and odd
     
@@ -564,6 +646,11 @@ def fullz(z_arr,zin,zfin,k,xe_total,nm,steps,psd):
     b_i[:,2:-nm:nm,1] += np.array( 
             [ splev( output_xs[:-1], psd_h[z], der=1 )*(2.0*source[1]/3.0)*dx for z in range( len(tauS) ) ] 
             )
+    if doppler:
+        # first-order Doppler rate-factor source at ell=1 in the Theta basis (B' of Eq. 414)
+        b_i[:,1:-nm:nm,1] += np.array( 
+            [ -splev( output_xs[:-1], psd_h[z], der=1 )*doppler_aHck(z_total[z], k)*dx for z in range( len(tauS) ) ] 
+            )
     # source from 2p population and monopole, note sign change
     b_i[:,nm:-nm:nm,2] += -tauS.reshape( (len(tauS),1) )*voigt_output_xs[:,1:-1]*source[2]*dx
     
@@ -586,9 +673,9 @@ def fullz(z_arr,zin,zfin,k,xe_total,nm,steps,psd):
 
     return moments, fphi, fbar
 
-def fullzp1(z_arr,zin,zfin,k,xe_total,nm,steps,psd):
+def fullzp1(z_arr,zin,zfin,k,xe_total,nm,steps,psd,closure=True,doppler=True):
     """
-    Computes all moments of the m=1 perturbed boltzmann equation without nonreflecting boundary conditions (simple truncation) using finite difference methods. 
+    Computes all moments of the m=1 perturbed boltzmann equation with a non-reflecting closure at ell_max = nm-1 (closure=False: simple truncation) using finite difference methods. 
     Sovler goes out to \pm 1000 doppler widths from the line center.
     
     Parameters
@@ -603,10 +690,15 @@ def fullzp1(z_arr,zin,zfin,k,xe_total,nm,steps,psd):
     
     xe_total : the free ionizaiton fraction. It is an array that must be defined over all redshifts in z_arr.  
     
-    nm-1 : the moment at which you truncate the hierarchy. The m = +/-1
-    hierarchies are closed by simple truncation (cutoff B.C. on the
-    advection term at j = nm-1), NOT by the non-reflecting condition used
-    in the m = 0 solver fullz(). 
+    nm-1 : the moment at which the hierarchy is closed (ell_max = nm-1; production uses nm = 15).
+
+    closure : if True (default), non-reflecting closure at ell_max = nm-1: the ell_max diagonal gets
+    -dx*|tvsh|*nrbc_alpha(nm-1, 1), alpha_(L,1) = sqrt((L^2-1)/(4L^2-1)), as in fullkp1/fullkm1.
+    If False, simple truncation (cutoff B.C. on the advection term at j = nm-1), the pre-2026-09
+    behaviour (the published Figure 18 used this with nm = 30).
+
+    doppler : if True (default), add the first-order Doppler rate-factor source +1/2 (aH/ck) df/dx at
+    ell=1 (code normalization), as in fullkp1.
 
     steps : defines the size of the doppler width array. \delta x (the doppler width in between each bin) is given by 2000/(steps-1)
     
@@ -673,6 +765,8 @@ def fullzp1(z_arr,zin,zfin,k,xe_total,nm,steps,psd):
         coeffs_i[:,nm+1,j-1:-nm-1:nm] = (dx*tvsh*(j-1)/(2.0*j-1.0)).reshape( (len(tauS),1) )
     # advection term for j=nm-1, with cutoff B.C
     coeffs_i[:,nm+1,nm-2:-nm:nm] = (dx*tvsh*(nm-2.0)/(2.0*nm-3.0)).reshape( (len(tauS),1) )
+    if closure:
+        coeffs_i[:,nm,nm-1:-nm:nm] += (-dx*np.abs(tvsh)*nrbc_alpha(nm-1.0, 1.0)).reshape( (len(tauS),1) )
     # optical depth term for j=1 to nm-1
     for j in range(1,nm):
         coeffs_i[:,nm,j:-nm:nm] += -(tauS*dx).reshape( (len(tauS),1) )*voigt_output_xs[:,:-1] 
@@ -692,6 +786,11 @@ def fullzp1(z_arr,zin,zfin,k,xe_total,nm,steps,psd):
     b_i[:,2:-nm:nm,0] += np.array( 
             [ splev( output_xs[:-1], psd_h[z], der=1 )*(-source[0]/6)*dx for z in range( len(tauS) ) ] 
             )
+    if doppler:
+        # first-order Doppler rate-factor source at ell=1 (code normalisation), D' of Eq. 414
+        b_i[:,1:-nm:nm,0] += np.array( 
+            [ splev( output_xs[:-1], psd_h[z], der=1 )*(0.5)*doppler_aHck(z_total[z], k)*dx for z in range( len(tauS) ) ] 
+            )
     
     moments = np.array( 
                 [sb( (1,nm), coeffs_i[z], b_i[z] ) for z in range( len(tauS) ) ] 
@@ -699,9 +798,9 @@ def fullzp1(z_arr,zin,zfin,k,xe_total,nm,steps,psd):
 
     return moments
 
-def fullzm1(z_arr,zin,zfin,k,xe_total,nm,steps,psd):
+def fullzm1(z_arr,zin,zfin,k,xe_total,nm,steps,psd,closure=True,doppler=True):
     """
-    Computes all moments of the m=-1 perturbed boltzmann equation without nonreflecting boundary conditions (simple truncation) using finite difference methods. 
+    Computes all moments of the m=-1 perturbed boltzmann equation with a non-reflecting closure at ell_max = nm-1 (closure=False: simple truncation) using finite difference methods. 
     Sovler goes out to \pm 1000 doppler widths from the line center.
     
     Parameters
@@ -716,10 +815,15 @@ def fullzm1(z_arr,zin,zfin,k,xe_total,nm,steps,psd):
     
     xe_total : the free ionizaiton fraction. It is an array that must be defined over all redshifts in z_arr.  
     
-    nm-1 : the moment at which you truncate the hierarchy. The m = +/-1
-    hierarchies are closed by simple truncation (cutoff B.C. on the
-    advection term at j = nm-1), NOT by the non-reflecting condition used
-    in the m = 0 solver fullz(). 
+    nm-1 : the moment at which the hierarchy is closed (ell_max = nm-1; production uses nm = 15).
+
+    closure : if True (default), non-reflecting closure at ell_max = nm-1: the ell_max diagonal gets
+    -dx*|tvsh|*nrbc_alpha(nm-1, 1), alpha_(L,1) = sqrt((L^2-1)/(4L^2-1)), as in fullkp1/fullkm1.
+    If False, simple truncation (cutoff B.C. on the advection term at j = nm-1), the pre-2026-09
+    behaviour (the published Figure 18 used this with nm = 30).
+
+    doppler : if True (default), add the first-order Doppler rate-factor source +1/6 (aH/ck) df/dx at
+    ell=1 (code normalization), as in fullkm1.
 
     steps : defines the size of the doppler width array. \delta x (the doppler width in between each bin) is given by 2000/(steps-1)
     
@@ -786,6 +890,8 @@ def fullzm1(z_arr,zin,zfin,k,xe_total,nm,steps,psd):
         coeffs_i[:,nm+1,j-1:-nm-1:nm] = (dx*tvsh*(j+1)/(2.0*j-1.0)).reshape( (len(tauS),1) )
     # advection term for j=nm-1, with cutoff BCs
     coeffs_i[:,nm+1,nm-2:-nm:nm] = (dx*tvsh*(nm)/(2.0*nm-3.0)).reshape( (len(tauS),1) )
+    if closure:
+        coeffs_i[:,nm,nm-1:-nm:nm] += (-dx*np.abs(tvsh)*nrbc_alpha(nm-1.0, 1.0)).reshape( (len(tauS),1) )
     # optical depth term for j=1 to nm-1
     for j in range(1,nm):
         coeffs_i[:,nm,j:-nm:nm] += -(tauS*dx).reshape( (len(tauS),1) )*voigt_output_xs[:,:-1] 
@@ -804,6 +910,11 @@ def fullzm1(z_arr,zin,zfin,k,xe_total,nm,steps,psd):
     # source from rotational velocity
     b_i[:,2:-nm:nm,0] += np.array( 
             [ splev( output_xs[:-1], psd_h[z], der=1 )*(-source[0]/6)*dx for z in range( len(tauS) ) ] 
+            )
+    if doppler:
+        # first-order Doppler rate-factor source at ell=1 (code normalisation), D' of Eq. 414
+        b_i[:,1:-nm:nm,0] += np.array( 
+            [ splev( output_xs[:-1], psd_h[z], der=1 )*(1.0/6.0)*doppler_aHck(z_total[z], k)*dx for z in range( len(tauS) ) ] 
             )
     
     moments = np.array( 

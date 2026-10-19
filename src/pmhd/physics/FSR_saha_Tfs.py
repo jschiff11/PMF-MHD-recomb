@@ -8,6 +8,8 @@ from scipy.integrate import solve_ivp
 from scipy.interpolate import splrep, splev
 
 from pmhd import cons, pars
+from pmhd.physics.theta_pool import theta_map
+from pmhd.physics.ode_atol import solve_on_grid   # PMHD_ATOL_SCALED (addendum 20); off: the production call
 from pmhd.data.grids import (
     k_grid,
     theta_grid,
@@ -62,9 +64,8 @@ def main(input_bind, input_kind):
             return [dv[0]*z, dv[1]*z]
         lzstart = np.log(zstart)
         lzgrid  = np.linspace(lzstart, np.log(600), num=10**4)
-        sol = solve_ivp(rhs_logz, [lzstart, np.log(600)], [vxinit, bxinit],
-                        method=ODE_METHOD, dense_output=True, atol=_atol(1e-9), rtol=_rtol(1e-6))
-        return sol.sol(lzgrid)
+        return solve_on_grid(rhs_logz, [lzstart, np.log(600)], [vxinit, bxinit], lzgrid,
+                             method=ODE_METHOD, atol=_atol(1e-9), rtol=_rtol(1e-6))
 
     # Direct z-integration (kept for reference; commented out -- use log(z) below).
     # def fssahainteg(karr,thetaarr,B0arr,kind,bind,thetaind, zstart, deltainit, vzinit, vyprimeinit, byinit):
@@ -81,23 +82,24 @@ def main(input_bind, input_kind):
             return [x*z for x in dv]
         lzstart = np.log(zstart)
         lzgrid  = np.linspace(lzstart, np.log(600), num=10**4)
-        sol = solve_ivp(rhs_logz, [lzstart, np.log(600)],
-                        [deltainit, vzinit, vyprimeinit, byinit],
-                        method=ODE_METHOD, dense_output=True, atol=_atol(1e-9), rtol=_rtol(1e-6))
-        return sol.sol(lzgrid)
+        return solve_on_grid(rhs_logz, [lzstart, np.log(600)], [deltainit, vzinit, vyprimeinit, byinit], lzgrid,
+                             method=ODE_METHOD, atol=_atol(1e-9), rtol=_rtol(1e-6))
     
     print(time.ctime())
 
     resultsalf = np.zeros(( len(thetaarr) ,2,10**4))
     resultsmag = np.zeros(( len(thetaarr),4,10**4 ))
-    for thetaind in range(len(thetaarr)):
-        resultsalf[thetaind,:,:] = fssahaalfinteg(karr,thetaarr,B0arr,
+    def _one_theta(thetaind):   # independent per angle: parallel with PMHD_NPROC > 1, bit-identical to the serial loop
+        a = fssahaalfinteg(karr,thetaarr,B0arr,
             input_kind, input_bind, thetaind,zfsarr[input_kind], 0, 
                 1)
-        resultsmag[thetaind,:,:] = fssahainteg(karr,thetaarr,B0arr,
+        m = fssahainteg(karr,thetaarr,B0arr,
             input_kind, input_bind, thetaind,zfsarr[input_kind], 
                                                0, 0,
                                                0, 1 )
+        return a, m
+    for thetaind, (a, m) in enumerate(theta_map(_one_theta, len(thetaarr))):
+        resultsalf[thetaind,:,:] = a; resultsmag[thetaind,:,:] = m
         
     PROJECT_ROOT = Path(__file__).resolve().parents[3]
 

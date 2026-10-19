@@ -110,7 +110,7 @@ def main(input_bind, input_kind):
         byhold = maghold[:,3,:]
         Phiyhold = maghold[:,2,:]
         Thetahold = maghold[:,1,:]
-        deltahold = maghold[:,0,:]
+        deltahold = pars.TCR_DELTA_B*maghold[:,0,:]   # delta_b = 3 delta_gamma on the TCR segment
 
         for thetaind in range(int((len(thetaarr)-1)/2)+1):
             zinterp = np.logspace(np.log10(zcrossarr[input_kind]),np.log10(zfsarr[input_kind]), num = zsteps)[::-1]

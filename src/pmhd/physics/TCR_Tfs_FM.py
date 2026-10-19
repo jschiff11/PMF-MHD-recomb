@@ -8,6 +8,7 @@ from scipy.integrate import solve_ivp
 from scipy.interpolate import splrep, splev
 
 from pmhd import cons, pars
+from pmhd.physics.theta_pool import theta_map
 from pmhd.data.grids import (
     k_grid,
     theta_grid,
@@ -40,9 +41,11 @@ def main(input_bind, input_kind):
     print(time.ctime())
 
     resultsmag = np.zeros((len(thetaarr), 4, 10**4))
-    for thetaind in range(len(thetaarr)):
-        resultsmag[thetaind, :, :] = TCRmaginteg(karr, thetaarr, B0arr,
+    def _one_theta(thetaind):   # independent per angle: parallel with PMHD_NPROC > 1, bit-identical to the serial loop
+        return TCRmaginteg(karr, thetaarr, B0arr,
             input_kind, input_bind, thetaind, zcrossarr[input_kind], zfsarr[input_kind])
+    for thetaind, m in enumerate(theta_map(_one_theta, len(thetaarr))):
+        resultsmag[thetaind, :, :] = m
 
     PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
